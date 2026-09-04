@@ -16,9 +16,9 @@ class EmbeddedSystemScanner:
         self._stop = False
         self.was_stopped = False
         self.manufacturer_map = {
-            # Epic Safety Inc. assigned OUIs
-            "f0:24:f9": "Epic Safety Inc. (Embedded System)",
-            "44:1d:64": "Epic Safety Inc.",
+            # Field Devices Inc. assigned OUIs
+            "f0:24:f9": "Field Devices Inc. (Embedded System)",
+            "44:1d:64": "Field Devices Inc.",
             # Espressif OUIs used on Embedded System / Embedded System modules
             "e8:b0:c5": "Espressif (Embedded System Node)",   # ESP32-WROVER-E
             "4c:75:25": "Espressif (Embedded System Node)",
@@ -143,7 +143,7 @@ class EmbeddedSystemScanner:
                                 }
                             self.scanner.devices[ip]["name"] = name.split(".")[0]
                             if "Embedded System" in name.lower():
-                                self.scanner.devices[ip]["manufacturer"] = "Epic Safety Inc."
+                                self.scanner.devices[ip]["manufacturer"] = "Field Devices Inc."
 
         zeroconf = Zeroconf()
         browser = ServiceBrowser(zeroconf, "_http._tcp.local.", MyListener(self))
@@ -200,7 +200,7 @@ class EmbeddedSystemScanner:
                         if "Configuration WebUI" not in self.devices[ip]["services"]:
                             self.devices[ip]["services"].append("Configuration WebUI")
                         self.devices[ip]["name"]         = "Embedded System"
-                        self.devices[ip]["manufacturer"] = data.get("manufacturer", "Epic Safety Inc.")
+                        self.devices[ip]["manufacturer"] = data.get("manufacturer", "Field Devices Inc.")
                         # Enrich with version and serial when available
                         if "version" in data:
                             self.devices[ip]["version"] = data["version"]
@@ -224,7 +224,7 @@ class EmbeddedSystemScanner:
                         if "Configuration WebUI" not in self.devices[ip]["services"]:
                             self.devices[ip]["services"].append("Configuration WebUI")
                         self.devices[ip]["name"]         = "Embedded System"
-                        self.devices[ip]["manufacturer"] = "Epic Safety Inc."
+                        self.devices[ip]["manufacturer"] = "Field Devices Inc."
                         if "build" in data:
                             self.devices[ip]["version"] = data["build"]
         except Exception:

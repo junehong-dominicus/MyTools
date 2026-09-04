@@ -4,7 +4,7 @@ My tools for Embedded System Developments
 ## Serial Monitor + Network Scanner
 
 A field technician's Embedded System / Embedded System debug tool: a multi-port serial monitor (originally
-migrated from `serial_monitor_v2`), plus `epic_scanner`'s network discovery behind a
+migrated from `serial_monitor_v2`), plus network discovery behind a
 **Scan** button.
 
 Standalone: vendors its own copy of the shared `common/` theme package, so it has no

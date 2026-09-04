@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, Signal, QObject
 from scanner import EmbeddedSystemScanner
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Network scan dialog (Qt port of epic_scanner's tkinter/customtkinter UI),
+# Network scan dialog (Qt port of the original scanner's tkinter/customtkinter UI),
 # backed by the same EmbeddedSystemScanner business logic.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -24,7 +24,7 @@ class ScanResultSignal(QObject):
 class ScanDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Epic Scanner — Embedded System / Embedded System Network Discovery")
+        self.setWindowTitle("Network Scanner — Embedded System / Embedded System Network Discovery")
         self.resize(900, 480)
         # Non-modal: keep serial panes usable while a scan runs.
         self.setModal(False)

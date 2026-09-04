@@ -15,7 +15,7 @@ from PySide6.QtGui import QFont, QTextCursor, QIcon
 # Windows Taskbar Icon Fix
 if sys.platform == 'win32':
     import ctypes
-    myappid = u'epicsafety.Embedded System.my_tools' # arbitrary string
+    myappid = u'mytools.serial_monitor.app' # arbitrary string
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
 # Add own dir to path for the locally-vendored common/ theme package
@@ -27,7 +27,7 @@ from scan_dialog import ScanDialog
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MyTools - Serial Monitor + Network Scanner
-# (migrated from serial_monitor_v2, with epic_scanner's network discovery
+# (migrated from serial_monitor_v2, with a network-scanner feature
 # added behind a SCAN toolbar button)
 # ─────────────────────────────────────────────────────────────────────────────
 
