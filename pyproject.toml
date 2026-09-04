@@ -1,0 +1,14 @@
+[project]
+name = "my-tools"
+version = "1.0.0"
+description = "Serial monitor + Embedded System/Embedded System network scanner for field technicians (migrated from serial_monitor_v2, adds epic_scanner's network discovery)"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.5",
+    "pyserial>=3.5",
+    "psutil>=5.9",
+    "scapy>=2.5",
+    "zeroconf>=0.130",
+    "requests>=2.31",
+    "pyinstaller>=6.5.0",
+]
