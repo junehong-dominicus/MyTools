@@ -1,0 +1,14 @@
+[project]
+name = "shell-multiplexer"
+version = "1.0.0"
+description = "Multi-pane embedded PowerShell tool for field technicians"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.5",
+    "pywinpty>=2.0",
+    "pyte>=0.8.1",
+    "pyinstaller>=6.5.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
