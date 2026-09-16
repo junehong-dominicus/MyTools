@@ -1,3 +1,4 @@
+import logging
 import threading
 
 from PySide6.QtCore import QObject, Signal
@@ -31,6 +32,7 @@ class PtyBackend(QObject):
             except EOFError:
                 break
             except Exception:
+                logging.exception("pty_backend read loop error")
                 break
             if data:
                 self.output_received.emit(data)

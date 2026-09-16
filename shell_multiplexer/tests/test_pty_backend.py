@@ -1,4 +1,3 @@
-import os
 import time
 
 from pty_backend import PtyBackend
