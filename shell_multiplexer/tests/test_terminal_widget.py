@@ -35,6 +35,12 @@ def test_resolve_color_hex_passthrough():
     assert resolve_color("#112233", bold=False, is_fg=True) == QColor("#112233")
 
 
+def test_resolve_color_bright_name_from_aixterm_code():
+    # pyte emits "brightred" directly for aixterm SGR codes (90-97/100-107),
+    # with bold=False -- a separate convention from bold=True + fg="red".
+    assert resolve_color("brightred", bold=False, is_fg=True) == QColor(ANSI_BRIGHT_COLORS["red"])
+
+
 def test_widget_renders_fed_screen_without_error(qapp):
     widget = TerminalWidget()
     widget.resize(400, 300)
