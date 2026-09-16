@@ -12,16 +12,30 @@
 
 import os
 
+from PyInstaller.utils.hooks import collect_all
+
 COMMON_ROOT = os.path.abspath(SPECPATH)
 
 block_cipher = None
 
+# pywinpty's `winpty` package ships native helper binaries (OpenConsole.exe,
+# winpty-agent.exe, winpty.dll, conpty.dll) that it spawns/loads at runtime
+# from a directory next to its own module. PyInstaller's automatic binary
+# scan only follows the PE import table of winpty's compiled extension
+# (_winpty.pyd), so it picks up conpty.dll/winpty.dll but has no way to know
+# about the helper .exe files that get launched as child processes rather
+# than linked as DLLs. Without them, ConPTY/WinPTY initialization fails
+# immediately in the frozen build (no real powershell.exe ever attaches),
+# even though the same code works fine when run from source. collect_all()
+# pulls in everything winpty needs (data files, dynamic libs, submodules).
+winpty_datas, winpty_binaries, winpty_hiddenimports = collect_all('winpty')
+
 a = Analysis(
     ['main.py'],
     pathex=[COMMON_ROOT],
-    binaries=[],
-    datas=[('common/app_icon.ico', 'common')],
-    hiddenimports=['common.ui_theme'],
+    binaries=winpty_binaries,
+    datas=[('common/app_icon.ico', 'common')] + winpty_datas,
+    hiddenimports=['common.ui_theme'] + winpty_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
