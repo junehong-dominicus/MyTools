@@ -42,3 +42,31 @@ python build_exe.py
 python -m PyInstaller MyTools.spec --noconfirm
 ```
 Results will appear in the `dist/` folder, then get copied to `exe/MyTools.exe`.
+
+## Shell Multiplexer
+
+A companion field tool: 1-4 fully interactive PowerShell panes (real ConPTY
+terminals — colors, cursor movement, `Ctrl+C`, etc.) in one resizable
+window, each with its own configurable starting directory.
+
+Standalone: lives in `shell_multiplexer/` and vendors its own copy of the
+`common/` theme package, so it builds independently of the Serial Monitor.
+
+### Prerequisites
+- Windows 10 1809+ (ConPTY) or Windows 11
+- Python 3.10+
+- From `shell_multiplexer/`: `uv sync` (installs `PySide6`, `pywinpty`, `pyte`)
+
+### How to Run
+```powershell
+cd shell_multiplexer
+python main.py
+```
+
+### How to Build (EXE)
+```powershell
+cd shell_multiplexer
+python build_exe.py
+```
+Results appear in `shell_multiplexer/dist/`, then get copied to
+`shell_multiplexer/exe/ShellMultiplexer.exe`.
