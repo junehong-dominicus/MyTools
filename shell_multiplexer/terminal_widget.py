@@ -22,11 +22,44 @@ ANSI_BRIGHT_COLORS = {
 DEFAULT_FG = "#d4d4d4"
 DEFAULT_BG = "#1e1e1e"
 
+# How long to wait for widget geometry to stop changing before actually
+# resizing the terminal. Building a multi-pane layout (e.g. switching SHELL
+# COUNT, or the initial window show) fires several real resizeEvents in quick
+# succession as Qt's splitters settle. Debouncing collapses that churn into
+# one final size, rather than reacting to each transient intermediate size.
+_RESIZE_DEBOUNCE_MS = 150
+
 
 def compute_grid_size(widget_width: int, widget_height: int, cell_width: int, cell_height: int) -> tuple[int, int]:
     cols = max(1, widget_width // cell_width)
     rows = max(1, widget_height // cell_height)
     return cols, rows
+
+
+def compute_visible_window(buffer_lines: int, buffer_columns: int, visible_rows: int, visible_cols: int, cursor_row: int) -> tuple[int, int, int]:
+    """Return (top_row, rows_to_render, cols_to_render): the window of a
+    pyte buffer -- which only ever grows, see
+    TerminalWidget._sync_size_to_widget -- that corresponds to what the
+    widget can currently actually show.
+
+    The row window ends at the *cursor's* current row, not simply the
+    bottom of the buffer: pyte's own auto-scroll only triggers once its own
+    (possibly much taller, padded) line count is filled, not the widget's
+    smaller current visible size, so new output can sit well above the
+    buffer's bottom for a long time (e.g. right after a shrink, before the
+    pane has been used enough to fill even its old, larger size). Anchoring
+    on the cursor keeps whatever was most recently written in view either
+    way, and naturally matches "bottom of buffer" once pyte's own
+    scrolling *has* kicked in (cursor sits at buffer_lines - 1 then).
+
+    Columns don't need the same treatment: unlike rows, pyte has no
+    left/right auto-scroll -- a line either wraps into a new row or is
+    truncated -- so content always starts at column 0."""
+    rows_to_render = min(buffer_lines, visible_rows)
+    cols_to_render = min(buffer_columns, visible_cols)
+    max_top_row = buffer_lines - rows_to_render
+    top_row = max(0, min(cursor_row - rows_to_render + 1, max_top_row))
+    return top_row, rows_to_render, cols_to_render
 
 
 def resolve_color(name, bold: bool, is_fg: bool) -> QColor:
@@ -56,6 +89,13 @@ class TerminalWidget(QWidget):
         super().__init__(parent)
         self.backend = PtyBackend(self)
         self.screen: TerminalScreen | None = None
+        # The pty's/shell's real, current column/row count -- distinct from
+        # self.screen.columns/lines, which only ever grows (see
+        # _sync_size_to_widget). Used to render just the bottom-left window
+        # of the (possibly taller/wider) pyte buffer that corresponds to
+        # what the widget can actually show right now.
+        self._visible_cols = 80
+        self._visible_rows = 24
         self._font = QFont("Consolas", 10)
         self._metrics = QFontMetrics(self._font)
 
@@ -73,6 +113,11 @@ class TerminalWidget(QWidget):
         self._blink_timer.timeout.connect(self._toggle_cursor)
         self._blink_timer.start()
 
+        self._resize_debounce_timer = QTimer(self)
+        self._resize_debounce_timer.setSingleShot(True)
+        self._resize_debounce_timer.setInterval(_RESIZE_DEBOUNCE_MS)
+        self._resize_debounce_timer.timeout.connect(self._sync_size_to_widget)
+
         self.setFocusPolicy(Qt.StrongFocus)
 
     def _cell_size(self) -> tuple[int, int]:
@@ -82,32 +127,51 @@ class TerminalWidget(QWidget):
         # Spawn with the conventional terminal default size — the widget may
         # not yet be shown/laid out at this point (e.g. panes are started
         # before the main window is shown), so self.width()/height() can't
-        # be trusted yet. A too-small initial grid would irrecoverably mangle
-        # the shell's first prompt output, since pyte's resize() only pads/
-        # clips going forward — it doesn't reflow already-corrupted content.
+        # be trusted yet.
         cols, rows = 80, 24
+        self._visible_cols, self._visible_rows = cols, rows
         self.screen = TerminalScreen(columns=cols, lines=rows)
         self.backend.spawn(cwd, columns=cols, lines=rows)
         self._repaint_timer.start()
-        # Correct the size to the widget's real, current geometry shortly
-        # after control returns to the event loop — by which point layout
-        # has settled, whether this is the initial launch or a Restart of an
-        # already-visible pane.
-        QTimer.singleShot(0, self._sync_size_to_widget)
+        # Correct the size to the widget's real, current geometry once
+        # layout has settled — whether this is the initial launch or a
+        # Restart of an already-visible pane.
+        self._resize_debounce_timer.start()
 
     def _sync_size_to_widget(self) -> None:
-        # The widget (and its underlying C++ object) may already be gone by
-        # the time this deferred callback runs -- e.g. the user changes the
-        # SHELL COUNT combo and MainWindow.build_panes() tears down this
-        # pane's widgets via deleteLater() before the next event-loop tick
-        # fires this callback. Touching self.width()/self.screen on a
-        # deleted widget raises RuntimeError from inside the Qt event loop,
-        # so bail out early if that's happened.
+        # Fires once geometry has been quiet for _RESIZE_DEBOUNCE_MS (see
+        # start()/resizeEvent(), which (re)start the debounce timer rather
+        # than applying a resize immediately). The widget (and its
+        # underlying C++ object) may already be gone by the time this
+        # deferred callback runs -- e.g. the user changes the SHELL COUNT
+        # combo and MainWindow.build_panes() tears down this pane's widgets
+        # via deleteLater() before the timer fires. Touching
+        # self.width()/self.screen on a deleted widget raises RuntimeError
+        # from inside the Qt event loop, so bail out early if that's
+        # happened.
         if not shiboken6.isValid(self) or self.screen is None:
             return
         cell_w, cell_h = self._cell_size()
         cols, rows = compute_grid_size(self.width(), self.height(), cell_w, cell_h)
-        self.screen.resize(columns=cols, lines=rows)
+        self._visible_cols, self._visible_rows = cols, rows
+
+        # Never shrink pyte's own buffer: pyte's Screen.resize() drops rows
+        # from the *top* (and crops columns from the *right*) when shrinking
+        # -- correct behavior for trimming real scrollback, but a freshly
+        # spawned shell's only output so far (its first prompt) sits at the
+        # very top of an otherwise-empty buffer, so shrinking to the pane's
+        # real (often smaller, once split across multiple panes) size would
+        # wipe it out. Only ever grow the pyte-side buffer; paintEvent then
+        # renders just the bottom-left _visible_rows x _visible_cols window
+        # of it, which is always where the shell's *current* output is,
+        # since new content is written at increasing row numbers as before.
+        buffer_cols = max(self.screen.columns, cols)
+        buffer_rows = max(self.screen.lines, rows)
+        self.screen.resize(columns=buffer_cols, lines=buffer_rows)
+
+        # The real pty/shell must still be told its actual, current size --
+        # for correct wrapping, progress bars, $Host.UI.RawUI.WindowSize,
+        # tab-completion menu placement, etc.
         self.backend.resize(cols, rows)
 
     def _on_output(self, text: str) -> None:
@@ -130,11 +194,14 @@ class TerminalWidget(QWidget):
         self.exited.emit(code)
 
     def resizeEvent(self, event) -> None:
+        # Don't apply the resize immediately: a multi-pane layout rebuild
+        # (e.g. changing SHELL COUNT) fires several real resizeEvents in
+        # quick succession as Qt's splitters settle, and a shrink applied
+        # mid-settle can wipe already-rendered content (see
+        # _RESIZE_DEBOUNCE_MS). Restarting the debounce timer here means
+        # only the final, settled size actually gets applied.
         if self.screen:
-            cell_w, cell_h = self._cell_size()
-            cols, rows = compute_grid_size(self.width(), self.height(), cell_w, cell_h)
-            self.screen.resize(columns=cols, lines=rows)
-            self.backend.resize(cols, rows)
+            self._resize_debounce_timer.start()
         super().resizeEvent(event)
 
     def keyPressEvent(self, event) -> None:
@@ -161,20 +228,31 @@ class TerminalWidget(QWidget):
         cell_w, cell_h = self._cell_size()
         ascent = self._metrics.ascent()
 
-        for y in range(self.screen.lines):
-            for x in range(self.screen.columns):
+        # self.screen may be *taller*/*wider* than what currently fits in
+        # the widget (see _sync_size_to_widget: it only ever grows, to avoid
+        # losing content on shrink) -- render just the window (ending at the
+        # cursor's row) that corresponds to the pane's actual current size,
+        # which is always where the shell's current output is.
+        top_row, rows_to_render, visible_cols = compute_visible_window(
+            self.screen.lines, self.screen.columns, self._visible_rows, self._visible_cols,
+            cursor_row=self.screen.cursor.y,
+        )
+
+        for y in range(top_row, top_row + rows_to_render):
+            screen_y = y - top_row
+            for x in range(visible_cols):
                 cell = self.screen.get_cell(x, y)
                 fg, bg = cell.fg, cell.bg
                 if cell.reverse:
                     fg, bg = bg, fg
                 if bg not in (None, "default"):
-                    painter.fillRect(x * cell_w, y * cell_h, cell_w, cell_h, resolve_color(bg, cell.bold, is_fg=False))
+                    painter.fillRect(x * cell_w, screen_y * cell_h, cell_w, cell_h, resolve_color(bg, cell.bold, is_fg=False))
                 if cell.data != " ":
                     painter.setPen(resolve_color(fg, cell.bold, is_fg=True))
-                    painter.drawText(x * cell_w, y * cell_h + ascent, cell.data)
+                    painter.drawText(x * cell_w, screen_y * cell_h + ascent, cell.data)
 
         cursor = self.screen.cursor
-        if not cursor.hidden and self._cursor_visible:
-            painter.fillRect(cursor.x * cell_w, cursor.y * cell_h, cell_w, cell_h, QColor(255, 255, 255, 120))
+        if not cursor.hidden and self._cursor_visible and cursor.y >= top_row and cursor.x < visible_cols:
+            painter.fillRect(cursor.x * cell_w, (cursor.y - top_row) * cell_h, cell_w, cell_h, QColor(255, 255, 255, 120))
 
         painter.end()
