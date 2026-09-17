@@ -78,11 +78,29 @@ class TerminalWidget(QWidget):
         return self._metrics.horizontalAdvance("W"), self._metrics.height()
 
     def start(self, cwd: str) -> None:
-        cell_w, cell_h = self._cell_size()
-        cols, rows = compute_grid_size(self.width(), self.height(), cell_w, cell_h)
+        # Spawn with the conventional terminal default size — the widget may
+        # not yet be shown/laid out at this point (e.g. panes are started
+        # before the main window is shown), so self.width()/height() can't
+        # be trusted yet. A too-small initial grid would irrecoverably mangle
+        # the shell's first prompt output, since pyte's resize() only pads/
+        # clips going forward — it doesn't reflow already-corrupted content.
+        cols, rows = 80, 24
         self.screen = TerminalScreen(columns=cols, lines=rows)
         self.backend.spawn(cwd, columns=cols, lines=rows)
         self._repaint_timer.start()
+        # Correct the size to the widget's real, current geometry shortly
+        # after control returns to the event loop — by which point layout
+        # has settled, whether this is the initial launch or a Restart of an
+        # already-visible pane.
+        QTimer.singleShot(0, self._sync_size_to_widget)
+
+    def _sync_size_to_widget(self) -> None:
+        if self.screen is None:
+            return
+        cell_w, cell_h = self._cell_size()
+        cols, rows = compute_grid_size(self.width(), self.height(), cell_w, cell_h)
+        self.screen.resize(columns=cols, lines=rows)
+        self.backend.resize(cols, rows)
 
     def _on_output(self, text: str) -> None:
         if self.screen:
