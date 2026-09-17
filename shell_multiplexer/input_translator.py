@@ -35,6 +35,11 @@ _SIMPLE_KEYS = {
     Qt.Key_Tab: "\t",
     Qt.Key_Backspace: "\x7f",
     Qt.Key_Escape: "\x1b",
+    # Qt delivers Shift+Tab as its own key code (Key_Backtab) rather than
+    # Key_Tab + ShiftModifier, so it needs its own mapping or it falls
+    # through to event.text() (empty for this key) and PSReadLine's reverse
+    # tab-completion never receives anything.
+    Qt.Key_Backtab: "\x1b[Z",
 }
 
 

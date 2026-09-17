@@ -46,3 +46,9 @@ def test_backspace_maps_to_del(qapp):
 def test_f5_maps_to_xterm_sequence(qapp):
     event = make_key_event(Qt.Key_F5)
     assert translate_key_event(event) == "\x1b[15~"
+
+
+def test_shift_tab_maps_to_reverse_tab_sequence(qapp):
+    # Qt delivers Shift+Tab as Key_Backtab (not Key_Tab + ShiftModifier).
+    event = make_key_event(Qt.Key_Backtab, modifiers=Qt.ShiftModifier)
+    assert translate_key_event(event) == "\x1b[Z"
