@@ -14,8 +14,28 @@ class PtyBackend(QObject):
         self._proc = None
         self._thread = None
         self._stop = False
+        # Set immediately before calling terminate() on a still-running prior
+        # process from within spawn() (i.e. a deliberate Restart), and reset
+        # to False only after that terminate() call returns. terminate()'s
+        # self._thread.join(timeout=2) blocks this (calling) thread until the
+        # old reader thread's _read_loop actually runs to completion -- and
+        # the final exited.emit(code) below happens *before* _read_loop
+        # returns (which is what unblocks join()). So whenever the old
+        # reader thread reaches that emit, the caller is still blocked inside
+        # join() and has not yet had a chance to reset this flag back to
+        # False -- it is guaranteed to still be True. That lets us suppress
+        # the stale exit signal for a deliberate restart while still
+        # emitting normally for a genuine unexpected exit (the shell process
+        # exiting/crashing on its own, outside of a spawn()-triggered
+        # terminate()).
+        self._suppress_exit_signal = False
 
     def spawn(self, cwd: str, columns: int = 80, lines: int = 24) -> None:
+        if self._proc is not None:
+            self._suppress_exit_signal = True
+            self.terminate()
+            self._suppress_exit_signal = False
+
         self._proc = PtyProcess.spawn(
             ["powershell.exe", "-NoLogo"],
             cwd=cwd,
@@ -38,7 +58,13 @@ class PtyBackend(QObject):
                 self.output_received.emit(data)
 
         code = self._proc.exitstatus if self._proc.exitstatus is not None else -1
-        self.exited.emit(code)
+        # Qt signal args are marshalled as a 32-bit signed int here; a real
+        # NTSTATUS-style exit code (e.g. STATUS_CONTROL_C_EXIT =
+        # 3221225786) would silently wrap into a nonsense negative value.
+        if not (-(2**31) <= code < 2**31):
+            code = -1
+        if not self._suppress_exit_signal:
+            self.exited.emit(code)
 
     def write(self, text: str) -> None:
         if self._proc and self._proc.isalive():
