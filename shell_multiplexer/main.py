@@ -37,8 +37,9 @@ class MainWindow(QMainWindow):
         outer_layout = QVBoxLayout(central)
 
         toolbar = QFrame()
-        toolbar.setFixedHeight(50)
+        toolbar.setFixedHeight(36)
         t_layout = QHBoxLayout(toolbar)
+        t_layout.setContentsMargins(10, 0, 10, 0)
 
         title = QLabel("MYTOOLS — SHELL MULTIPLEXER")
         title.setStyleSheet("color: #3498DB; font-size: 18px; font-weight: bold;")
