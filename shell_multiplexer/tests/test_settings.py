@@ -48,3 +48,38 @@ def test_non_integer_pane_key_is_skipped(tmp_path):
     _, paths = load_settings_file(str(path))
 
     assert paths == {}
+
+
+def test_top_level_list_returns_defaults(tmp_path):
+    # Valid JSON, but not an object -- config.get() would raise AttributeError.
+    path = tmp_path / "cfg.json"
+    path.write_text("[]")
+
+    count, paths = load_settings_file(str(path))
+
+    assert count == DEFAULT_PANE_COUNT
+    assert paths == {}
+
+
+def test_top_level_null_returns_defaults(tmp_path):
+    # Valid JSON, but config.get() on None would raise AttributeError.
+    path = tmp_path / "cfg.json"
+    path.write_text("null")
+
+    count, paths = load_settings_file(str(path))
+
+    assert count == DEFAULT_PANE_COUNT
+    assert paths == {}
+
+
+def test_panes_as_list_returns_defaults(tmp_path):
+    # "panes" is present but shaped wrong -- .items() on a list raises
+    # AttributeError. This must fall back to defaults (including shell_count),
+    # the same as a fully malformed file, not raise out of load_settings_file.
+    path = tmp_path / "cfg.json"
+    path.write_text(json.dumps({"shell_count": 2, "panes": [1, 2]}))
+
+    count, paths = load_settings_file(str(path))
+
+    assert count == DEFAULT_PANE_COUNT
+    assert paths == {}

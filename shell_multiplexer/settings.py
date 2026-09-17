@@ -38,5 +38,10 @@ def load_settings_file(path: str) -> tuple[int, dict[int, str]]:
                 continue
 
         return shell_count, pane_paths
-    except (json.JSONDecodeError, KeyError, OSError):
+    except (json.JSONDecodeError, KeyError, OSError, AttributeError, TypeError):
+        # AttributeError/TypeError cover valid-JSON-but-wrong-shape configs
+        # (e.g. top-level "[]" or "null", or "panes" being a list instead of
+        # a dict) where .get()/.items() gets called on something that isn't
+        # a dict -- these must fall back to defaults just like malformed
+        # JSON, not crash the whole app at startup.
         return DEFAULT_PANE_COUNT, {}
