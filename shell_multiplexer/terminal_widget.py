@@ -1,3 +1,4 @@
+import shiboken6
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QWidget
@@ -95,7 +96,14 @@ class TerminalWidget(QWidget):
         QTimer.singleShot(0, self._sync_size_to_widget)
 
     def _sync_size_to_widget(self) -> None:
-        if self.screen is None:
+        # The widget (and its underlying C++ object) may already be gone by
+        # the time this deferred callback runs -- e.g. the user changes the
+        # SHELL COUNT combo and MainWindow.build_panes() tears down this
+        # pane's widgets via deleteLater() before the next event-loop tick
+        # fires this callback. Touching self.width()/self.screen on a
+        # deleted widget raises RuntimeError from inside the Qt event loop,
+        # so bail out early if that's happened.
+        if not shiboken6.isValid(self) or self.screen is None:
             return
         cell_w, cell_h = self._cell_size()
         cols, rows = compute_grid_size(self.width(), self.height(), cell_w, cell_h)

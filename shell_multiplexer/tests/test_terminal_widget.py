@@ -1,3 +1,6 @@
+import sys
+
+import shiboken6
 from PySide6.QtGui import QColor
 
 from pty_backend import PtyBackend
@@ -123,3 +126,41 @@ def test_start_defers_size_correction_to_widgets_real_size(qapp, tmp_path, monke
 
     widget._repaint_timer.stop()
     widget._blink_timer.stop()
+
+
+def test_sync_size_to_widget_survives_widget_deleted_before_it_runs(qapp, tmp_path, monkeypatch):
+    # Regression test: MainWindow.build_panes() tears panes down via
+    # deleteLater() whenever the user changes the SHELL COUNT combo. If that
+    # teardown -- or any other deletion of the widget's underlying C++
+    # object -- happens after start() schedules the deferred
+    # QTimer.singleShot(0, self._sync_size_to_widget) correction but before
+    # that callback actually runs, the callback must not blow up. Without a
+    # validity guard, touching self.width()/self.screen on an
+    # already-deleted widget raises RuntimeError -- but PySide6 routes an
+    # exception raised inside a slot/callback to sys.excepthook rather than
+    # letting it propagate out of processEvents(), so a bare
+    # "processEvents() doesn't raise" assertion would pass even with the bug
+    # present. Install a temporary excepthook to actually observe whether
+    # the callback raised.
+    monkeypatch.setattr(PtyBackend, "spawn", lambda self, cwd, columns=80, lines=24: None)
+    monkeypatch.setattr(PtyBackend, "resize", lambda self, columns, lines: None)
+
+    widget = TerminalWidget()
+    widget.start(str(tmp_path))  # schedules the deferred singleShot(0, ...)
+
+    widget._repaint_timer.stop()
+    widget._blink_timer.stop()
+
+    assert shiboken6.isValid(widget)
+    shiboken6.delete(widget)  # simulate teardown completing before the callback fires
+    assert not shiboken6.isValid(widget)
+
+    uncaught = []
+    original_excepthook = sys.excepthook
+    sys.excepthook = lambda *exc_info: uncaught.append(exc_info)
+    try:
+        qapp.processEvents()  # runs the pending _sync_size_to_widget callback
+    finally:
+        sys.excepthook = original_excepthook
+
+    assert uncaught == []
