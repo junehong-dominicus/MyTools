@@ -1,7 +1,10 @@
 import sys
 
 import shiboken6
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
 from pty_backend import PtyBackend
 from terminal_screen import TerminalScreen
@@ -55,6 +58,52 @@ def test_widget_renders_fed_screen_without_error(qapp):
 
     assert pixmap.width() == 400
     assert pixmap.height() == 300
+
+
+def test_tab_and_shift_tab_reach_key_press_event_instead_of_stealing_focus(qapp):
+    # Regression test: by default, Qt intercepts Tab/Shift+Tab for keyboard
+    # focus traversal before they ever reach keyPressEvent, unless a widget
+    # overrides focusNextPrevChild() to opt out. Without that override, Tab
+    # never reaches translate_key_event and PowerShell's tab-completion is
+    # silently dead -- pressing Tab just moves focus to the next widget (e.g.
+    # another pane, or a Browse/Restart button) instead of sending a byte to
+    # the shell. Verified with a real sibling focusable widget and real Qt
+    # event dispatch (QTest.keyClick), not just the pure translate_key_event
+    # function, since that's exactly the layer the original bug lived in.
+    received_keys = []
+
+    class ProbeTerminalWidget(TerminalWidget):
+        def keyPressEvent(self, event):
+            received_keys.append(event.key())
+            super().keyPressEvent(event)
+
+    container = QWidget()
+    layout = QVBoxLayout(container)
+    term = ProbeTerminalWidget()
+    other = QPushButton("other focusable widget")
+    layout.addWidget(term)
+    layout.addWidget(other)
+    container.show()
+
+    term.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(term, Qt.Key_Tab)
+    qapp.processEvents()
+
+    assert qapp.focusWidget() is term
+    assert received_keys == [Qt.Key_Tab]
+
+    received_keys.clear()
+    term.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(term, Qt.Key_Backtab)
+    qapp.processEvents()
+
+    assert qapp.focusWidget() is term
+    assert received_keys == [Qt.Key_Backtab]
+
+    term._repaint_timer.stop()
+    term._blink_timer.stop()
 
 
 def test_start_spawns_with_safe_default_size_not_widgets_unshown_size(qapp, tmp_path, monkeypatch):

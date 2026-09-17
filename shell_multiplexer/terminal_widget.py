@@ -142,6 +142,13 @@ class TerminalWidget(QWidget):
         if text:
             self.backend.write(text)
 
+    def focusNextPrevChild(self, next: bool) -> bool:
+        # Qt intercepts Tab/Shift+Tab for focus traversal before they ever
+        # reach keyPressEvent unless a widget opts out here — without this,
+        # Tab never reaches translate_key_event and PowerShell's
+        # tab-completion is silently dead.
+        return False
+
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(DEFAULT_BG))
