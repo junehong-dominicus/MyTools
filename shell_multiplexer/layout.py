@@ -1,16 +1,24 @@
-def compute_grid_rows(count: int) -> list[list[int]]:
-    """Group pane ids 1..count into rows of at most 2, matching the
-    Serial Monitor's layout: 1->single, 2->side-by-side, 3->2-over-1,
-    4->2x2."""
-    if not (1 <= count <= 4):
-        raise ValueError(f"count must be between 1 and 4, got {count}")
+LAYOUT_MODES = ["1", "2", "2V", "3", "3T", "4"]
 
-    rows = []
-    pane_id = 1
-    remaining = count
-    while remaining > 0:
-        row_size = min(2, remaining)
-        rows.append(list(range(pane_id, pane_id + row_size)))
-        pane_id += row_size
-        remaining -= row_size
-    return rows
+_ROWS_BY_MODE = {
+    "1": [[1]],
+    "2": [[1, 2]],
+    "2V": [[1], [2]],
+    "3": [[1, 2], [3]],
+    "3T": [[1], [2, 3]],
+    "4": [[1, 2], [3, 4]],
+}
+
+
+def compute_grid_rows(mode: str) -> list[list[int]]:
+    """Return the pane-id rows for a layout mode, matching the Serial
+    Monitor's original 1/2/3/4 shapes plus two stacked variants: "2V" (two
+    panes stacked instead of side-by-side) and "3T" (one full-width pane on
+    top of two, instead of two on top of one)."""
+    if mode not in _ROWS_BY_MODE:
+        raise ValueError(f"unknown layout mode: {mode!r}")
+    return _ROWS_BY_MODE[mode]
+
+
+def pane_count_for_mode(mode: str) -> int:
+    return sum(len(row) for row in compute_grid_rows(mode))

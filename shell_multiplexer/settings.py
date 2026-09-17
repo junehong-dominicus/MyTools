@@ -1,14 +1,15 @@
 import json
 import os
 
-DEFAULT_PANE_COUNT = 1
-MAX_PANE_COUNT = 4
+from layout import LAYOUT_MODES
+
+DEFAULT_LAYOUT_MODE = "1"
 CONFIG_FILENAME = "shell_config.json"
 
 
-def save_settings_file(path: str, shell_count: int, pane_paths: dict[int, str]) -> None:
+def save_settings_file(path: str, layout_mode: str, pane_paths: dict[int, str]) -> None:
     config = {
-        "shell_count": shell_count,
+        "layout_mode": layout_mode,
         "panes": {str(pid): {"start_path": p} for pid, p in pane_paths.items()},
     }
     try:
@@ -18,17 +19,17 @@ def save_settings_file(path: str, shell_count: int, pane_paths: dict[int, str]) 
         print(f"Save error: {e}")
 
 
-def load_settings_file(path: str) -> tuple[int, dict[int, str]]:
+def load_settings_file(path: str) -> tuple[str, dict[int, str]]:
     if not os.path.exists(path):
-        return DEFAULT_PANE_COUNT, {}
+        return DEFAULT_LAYOUT_MODE, {}
 
     try:
         with open(path, "r") as f:
             config = json.load(f)
 
-        shell_count = config.get("shell_count", DEFAULT_PANE_COUNT)
-        if not isinstance(shell_count, int) or not (1 <= shell_count <= MAX_PANE_COUNT):
-            shell_count = DEFAULT_PANE_COUNT
+        layout_mode = config.get("layout_mode", DEFAULT_LAYOUT_MODE)
+        if layout_mode not in LAYOUT_MODES:
+            layout_mode = DEFAULT_LAYOUT_MODE
 
         pane_paths = {}
         for pid_str, pane_cfg in config.get("panes", {}).items():
@@ -37,11 +38,11 @@ def load_settings_file(path: str) -> tuple[int, dict[int, str]]:
             except (ValueError, AttributeError):
                 continue
 
-        return shell_count, pane_paths
+        return layout_mode, pane_paths
     except (json.JSONDecodeError, KeyError, OSError, AttributeError, TypeError):
         # AttributeError/TypeError cover valid-JSON-but-wrong-shape configs
         # (e.g. top-level "[]" or "null", or "panes" being a list instead of
         # a dict) where .get()/.items() gets called on something that isn't
         # a dict -- these must fall back to defaults just like malformed
         # JSON, not crash the whole app at startup.
-        return DEFAULT_PANE_COUNT, {}
+        return DEFAULT_LAYOUT_MODE, {}

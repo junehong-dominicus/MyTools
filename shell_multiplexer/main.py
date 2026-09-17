@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from common.ui_theme import apply_industrial_theme
 
-from layout import compute_grid_rows
-from settings import CONFIG_FILENAME, MAX_PANE_COUNT, DEFAULT_PANE_COUNT, load_settings_file, save_settings_file
+from layout import LAYOUT_MODES, compute_grid_rows
+from settings import CONFIG_FILENAME, DEFAULT_LAYOUT_MODE, load_settings_file, save_settings_file
 from shell_pane import ShellPane
 
 if sys.platform == 'win32':
@@ -29,6 +29,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 800)
 
         self.panes: list[ShellPane] = []
+        self.current_mode = DEFAULT_LAYOUT_MODE
         self.pane_area_layout = None
 
         central = QWidget()
@@ -46,8 +47,8 @@ class MainWindow(QMainWindow):
 
         t_layout.addWidget(QLabel("SHELL COUNT:"))
         self.shell_count_combo = QComboBox()
-        self.shell_count_combo.addItems([str(n) for n in range(1, MAX_PANE_COUNT + 1)])
-        self.shell_count_combo.setFixedWidth(60)
+        self.shell_count_combo.addItems(LAYOUT_MODES)
+        self.shell_count_combo.setFixedWidth(70)
         t_layout.addWidget(self.shell_count_combo)
 
         save_btn = QPushButton("Save Settings")
@@ -61,15 +62,15 @@ class MainWindow(QMainWindow):
         self.pane_area_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(self.pane_area)
 
-        initial_count, initial_paths = load_settings_file(self.config_path)
+        initial_mode, initial_paths = load_settings_file(self.config_path)
         self.shell_count_combo.blockSignals(True)
-        self.shell_count_combo.setCurrentText(str(initial_count))
+        self.shell_count_combo.setCurrentText(initial_mode)
         self.shell_count_combo.blockSignals(False)
         self.shell_count_combo.currentTextChanged.connect(self._on_shell_count_changed)
 
-        self.build_panes(initial_count, initial_paths)
+        self.build_panes(initial_mode, initial_paths)
 
-    def build_panes(self, count: int, initial_paths: dict[int, str] | None = None) -> None:
+    def build_panes(self, mode: str, initial_paths: dict[int, str] | None = None) -> None:
         prior_paths = {p.pane_id: p.path_edit.text() for p in self.panes}
         if initial_paths:
             prior_paths.update(initial_paths)
@@ -79,13 +80,14 @@ class MainWindow(QMainWindow):
             pane.setParent(None)
             pane.deleteLater()
         self.panes = []
+        self.current_mode = mode
 
         while self.pane_area_layout.count():
             item = self.pane_area_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        rows = compute_grid_rows(count)
+        rows = compute_grid_rows(mode)
         main_splitter = QSplitter(Qt.Vertical)
         for row in rows:
             if len(row) == 1:
@@ -108,11 +110,11 @@ class MainWindow(QMainWindow):
         return pane
 
     def _on_shell_count_changed(self, text: str) -> None:
-        self.build_panes(int(text))
+        self.build_panes(text)
 
     def save_settings(self) -> None:
         pane_paths = {p.pane_id: p.path_edit.text() for p in self.panes}
-        save_settings_file(self.config_path, len(self.panes), pane_paths)
+        save_settings_file(self.config_path, self.current_mode, pane_paths)
 
     def closeEvent(self, event) -> None:
         for pane in self.panes:

@@ -1,23 +1,54 @@
+from layout import LAYOUT_MODES
 from main import MainWindow
-from settings import DEFAULT_PANE_COUNT, save_settings_file
+from settings import DEFAULT_LAYOUT_MODE, save_settings_file
 from shell_pane import ShellPane
 
 
-def test_starts_with_default_pane_count(qapp, monkeypatch, tmp_path):
+def test_starts_with_default_layout_mode(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
     window = MainWindow(config_path=str(tmp_path / "cfg.json"))
 
-    assert len(window.panes) == DEFAULT_PANE_COUNT
+    assert window.current_mode == DEFAULT_LAYOUT_MODE
+    assert len(window.panes) == 1
+
+
+def test_shell_count_combo_lists_all_layout_modes(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_path=str(tmp_path / "cfg.json"))
+
+    items = [window.shell_count_combo.itemText(i) for i in range(window.shell_count_combo.count())]
+
+    assert items == LAYOUT_MODES
 
 
 def test_build_panes_creates_correct_count_and_ids(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
     window = MainWindow(config_path=str(tmp_path / "cfg.json"))
 
-    window.build_panes(4)
+    window.build_panes("4")
 
     assert len(window.panes) == 4
     assert sorted(p.pane_id for p in window.panes) == [1, 2, 3, 4]
+
+
+def test_build_panes_2v_creates_two_panes(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_path=str(tmp_path / "cfg.json"))
+
+    window.build_panes("2V")
+
+    assert len(window.panes) == 2
+    assert sorted(p.pane_id for p in window.panes) == [1, 2]
+
+
+def test_build_panes_3t_creates_three_panes(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_path=str(tmp_path / "cfg.json"))
+
+    window.build_panes("3T")
+
+    assert len(window.panes) == 3
+    assert sorted(p.pane_id for p in window.panes) == [1, 2, 3]
 
 
 def test_build_panes_carries_forward_paths(qapp, monkeypatch, tmp_path):
@@ -25,7 +56,7 @@ def test_build_panes_carries_forward_paths(qapp, monkeypatch, tmp_path):
     window = MainWindow(config_path=str(tmp_path / "cfg.json"))
     window.panes[0].path_edit.setText("C:\\Kept")
 
-    window.build_panes(2)
+    window.build_panes("2")
 
     assert window.panes[0].path_edit.text() == "C:\\Kept"
 
@@ -35,13 +66,14 @@ def test_settings_round_trip_across_instances(qapp, monkeypatch, tmp_path):
     config_path = str(tmp_path / "cfg.json")
 
     window = MainWindow(config_path=config_path)
-    window.build_panes(2)
+    window.build_panes("2V")
     window.panes[0].path_edit.setText("C:\\Somewhere")
     window.save_settings()
 
     window2 = MainWindow(config_path=config_path)
 
     assert len(window2.panes) == 2
+    assert window2.current_mode == "2V"
     assert window2.panes[0].path_edit.text() == "C:\\Somewhere"
 
 
@@ -50,12 +82,12 @@ def test_close_event_terminates_all_panes(qapp, monkeypatch, tmp_path):
     terminated = []
     monkeypatch.setattr(ShellPane, "terminate", lambda self: terminated.append(self.pane_id))
     # Pre-seed a 3-pane config so construction builds all 3 panes in a single
-    # build_panes() call. (Constructing with the default count and then calling
-    # build_panes(3) afterward would legitimately terminate the discarded
+    # build_panes() call. (Constructing with the default mode and then calling
+    # build_panes("3") afterward would legitimately terminate the discarded
     # default pane too, which is correct rebuild behavior but not what this
     # test is checking.)
     config_path = str(tmp_path / "cfg.json")
-    save_settings_file(config_path, 3, {})
+    save_settings_file(config_path, "3", {})
     window = MainWindow(config_path=config_path)
 
     window.close()
