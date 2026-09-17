@@ -15,12 +15,12 @@ def test_mode_2v_is_stacked():
     assert compute_grid_rows("2V") == [[1], [2]]
 
 
-def test_mode_3_is_two_over_one():
-    assert compute_grid_rows("3") == [[1, 2], [3]]
+def test_mode_3_is_one_over_two():
+    assert compute_grid_rows("3") == [[1], [2, 3]]
 
 
-def test_mode_3t_is_one_over_two():
-    assert compute_grid_rows("3T") == [[1], [2, 3]]
+def test_mode_3t_is_two_over_one():
+    assert compute_grid_rows("3T") == [[1, 2], [3]]
 
 
 def test_mode_4_is_two_by_two():
