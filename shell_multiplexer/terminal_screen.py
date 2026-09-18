@@ -26,3 +26,6 @@ class TerminalScreen:
 
     def get_cell(self, x: int, y: int):
         return self._screen.buffer[y][x]
+
+    def get_line_text(self, y: int) -> str:
+        return "".join(self._screen.buffer[y][x].data for x in range(self._screen.columns)).rstrip()

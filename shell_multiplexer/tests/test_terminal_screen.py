@@ -32,3 +32,21 @@ def test_carriage_return_and_newline_move_cursor_to_next_line():
     screen = TerminalScreen(columns=10, lines=2)
     screen.feed("ab\r\ncd")
     assert screen.get_cell(0, 1).data == "c"
+
+
+def test_get_line_text_returns_typed_content():
+    screen = TerminalScreen(columns=10, lines=2)
+    screen.feed("hi")
+    assert screen.get_line_text(0) == "hi"
+
+
+def test_get_line_text_strips_trailing_padding():
+    screen = TerminalScreen(columns=10, lines=2)
+    screen.feed("hi")
+    assert len(screen.get_line_text(0)) == len("hi")
+
+
+def test_get_line_text_on_second_row():
+    screen = TerminalScreen(columns=10, lines=2)
+    screen.feed("ab\r\ncd")
+    assert screen.get_line_text(1) == "cd"
