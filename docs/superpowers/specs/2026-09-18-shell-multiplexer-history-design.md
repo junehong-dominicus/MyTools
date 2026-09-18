@@ -40,6 +40,17 @@ acceptable (and arguably more useful) shape for a read-only log.
 A captured line is only kept if it is non-empty after stripping trailing
 whitespace — pressing Enter on a blank prompt does not add an entry.
 
+**Known limitation — wrapped command lines.** Capture only reads the
+cursor's current visual row (`self.screen.get_line_text(self.screen.cursor.y)`).
+If a command line wraps across more than one visual row — because the
+pane is narrow and the prompt plus typed command together exceed the
+pane's column count — only that final visual row is captured; the prompt
+and the beginning of the wrapped command are lost from that history entry.
+pyte doesn't expose a per-line "this row is a continuation of a wrap"
+flag, so there's no cheap, robust way to reconstruct the full logical line
+from the rendered buffer alone. This is accepted as a known limitation,
+not a bug to chase.
+
 ## Storage
 
 `TerminalScreen` (terminal_screen.py) gains:
@@ -117,6 +128,12 @@ content can change between opens.
 Net effect: history for pane N survives a SHELL COUNT change (1 → 4 shells
 and back) the same way its start path does, and Save/Save As/Load carry
 it through the config files exactly like paths and font size.
+
+Captured history can include sensitive values the user typed (e.g. a
+command with an API key or credential passed as a CLI argument), and this
+is written verbatim into `configs/*.json` on disk. This is mitigated by
+`configs/` already being gitignored and this being a local single-user
+tool, but is worth being aware of.
 
 ## Testing
 

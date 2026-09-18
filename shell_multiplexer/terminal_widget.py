@@ -233,6 +233,13 @@ class TerminalWidget(QWidget):
     def keyPressEvent(self, event) -> None:
         text = translate_key_event(event)
         if text == "\r" and self.screen is not None:
+            # Known limitation: only the cursor's current visual row is
+            # read here. A command line that wraps across more than one
+            # visual row (narrow pane + long prompt/command) is captured
+            # truncated -- the prompt and start of the command are lost --
+            # since pyte exposes no per-line wrap flag to reconstruct the
+            # full logical line. See the design spec's "Capture mechanism"
+            # section; accepted, not a bug to chase.
             line = self.screen.get_line_text(self.screen.cursor.y).strip()
             if line:
                 self._history.append(line)
