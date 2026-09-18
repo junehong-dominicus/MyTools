@@ -1,11 +1,27 @@
 import os
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QPushButton, QVBoxLayout,
+    QAbstractItemView, QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QListWidget, QListWidgetItem, QPushButton, QVBoxLayout,
 )
 
 from terminal_widget import TerminalWidget
+
+# Placeholder text shown in the history dialog's list when the pane has no
+# recorded history yet, in place of a blank list.
+_NO_HISTORY_PLACEHOLDER = "No commands recorded yet"
+
+
+def _copy_selection_to_clipboard(history_list: QListWidget) -> None:
+    """Copy the history dialog's currently-selected rows to the clipboard,
+    newline-joined. Split out from _show_history so it can be exercised
+    directly in tests without going through a QShortcut."""
+    selected = history_list.selectedItems()
+    if not selected:
+        return
+    QGuiApplication.clipboard().setText("\n".join(item.text() for item in selected))
 
 
 class ShellPane(QFrame):
@@ -74,11 +90,30 @@ class ShellPane(QFrame):
     def _show_history(self) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Shell {self.pane_id} History")
+        # Without this, every History click leaves behind a hidden QDialog
+        # instance that's never destroyed until the pane itself is -- this
+        # dialog is created fresh each time rather than cached/reused.
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
         dialog_layout = QVBoxLayout(dialog)
+
+        history = self.terminal.get_history()
         history_list = QListWidget()
-        history_list.addItems(self.terminal.get_history())
+        # Allow selecting multiple entries so the copy shortcut below has
+        # something to act on -- view and copy (via normal list selection +
+        # Ctrl+C) is the whole point of this dialog.
+        history_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        if history:
+            history_list.addItems(history)
+        else:
+            placeholder = QListWidgetItem(_NO_HISTORY_PLACEHOLDER)
+            placeholder.setFlags(Qt.NoItemFlags)
+            history_list.addItem(placeholder)
         dialog_layout.addWidget(history_list)
         dialog.resize(500, 400)
+
+        copy_shortcut = QShortcut(QKeySequence(QKeySequence.Copy), dialog)
+        copy_shortcut.activated.connect(lambda: _copy_selection_to_clipboard(history_list))
+
         dialog.show()
         history_list.scrollToBottom()
 

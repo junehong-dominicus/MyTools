@@ -2,10 +2,11 @@ import os
 import time
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QDialog, QListWidget, QPushButton
+from PySide6.QtWidgets import QAbstractItemView, QDialog, QListWidget, QPushButton
 
-from shell_pane import ShellPane
+from shell_pane import _copy_selection_to_clipboard, ShellPane
 from terminal_widget import TerminalWidget
 
 
@@ -123,3 +124,129 @@ def test_history_button_click_opens_dialog(qapp, monkeypatch):
     assert len(dialogs) == 1
 
     dialogs[0].close()
+
+
+def test_history_dialog_has_delete_on_close_attribute(qapp, monkeypatch):
+    # Regression test: without Qt.WA_DeleteOnClose, repeated History clicks
+    # accumulate hidden QDialog instances forever (never destroyed until the
+    # pane itself is).
+    monkeypatch.setattr(TerminalWidget, "start", lambda self, cwd: None)
+    pane = ShellPane(1, os.path.expanduser("~"))
+    pane.terminal.load_history(["cmd one"])
+
+    pane._show_history()
+
+    dialog = pane.findChild(QDialog)
+    assert dialog.testAttribute(Qt.WA_DeleteOnClose)
+
+    dialog.close()
+
+
+def test_history_dialog_list_allows_extended_selection(qapp, monkeypatch):
+    monkeypatch.setattr(TerminalWidget, "start", lambda self, cwd: None)
+    pane = ShellPane(1, os.path.expanduser("~"))
+    pane.terminal.load_history(["cmd one", "cmd two", "cmd three"])
+
+    pane._show_history()
+
+    dialog = pane.findChild(QDialog)
+    history_list = dialog.findChild(QListWidget)
+    assert history_list.selectionMode() == QAbstractItemView.ExtendedSelection
+
+    dialog.close()
+
+
+def test_history_dialog_has_copy_shortcut_bound_to_standard_copy_key(qapp, monkeypatch):
+    monkeypatch.setattr(TerminalWidget, "start", lambda self, cwd: None)
+    pane = ShellPane(1, os.path.expanduser("~"))
+    pane.terminal.load_history(["cmd one", "cmd two"])
+
+    pane._show_history()
+
+    dialog = pane.findChild(QDialog)
+    shortcut = dialog.findChild(QShortcut)
+    assert shortcut is not None
+    assert shortcut.key() == QKeySequence(QKeySequence.Copy)
+
+    dialog.close()
+
+
+def test_history_dialog_copy_shortcut_copies_selected_lines_newline_joined(qapp, monkeypatch):
+    # Verifies the actual wiring end-to-end: select some items, trigger the
+    # shortcut's connected slot (activating the QShortcut itself is
+    # unreliable off-screen since it depends on window-activation state
+    # under the offscreen QPA platform), and check the clipboard. Clipboard
+    # access itself works fine under QT_QPA_PLATFORM=offscreen in this
+    # environment (verified manually), so this is a real assertion, not a
+    # skip.
+    monkeypatch.setattr(TerminalWidget, "start", lambda self, cwd: None)
+    pane = ShellPane(1, os.path.expanduser("~"))
+    pane.terminal.load_history(["PS C:\\> git status", "PS C:\\> ls", "PS C:\\> pwd"])
+
+    pane._show_history()
+
+    dialog = pane.findChild(QDialog)
+    history_list = dialog.findChild(QListWidget)
+    history_list.item(0).setSelected(True)
+    history_list.item(2).setSelected(True)
+
+    shortcut = dialog.findChild(QShortcut)
+    shortcut.activated.emit()
+
+    assert QGuiApplication.clipboard().text() == "PS C:\\> git status\nPS C:\\> pwd"
+
+    dialog.close()
+
+
+def test_copy_selection_to_clipboard_joins_selected_items_in_isolation(qapp):
+    # Exercises the extracted slot logic directly, independent of the
+    # dialog/shortcut plumbing.
+    history_list = QListWidget()
+    history_list.addItems(["one", "two", "three"])
+    history_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+    history_list.item(0).setSelected(True)
+    history_list.item(1).setSelected(True)
+
+    _copy_selection_to_clipboard(history_list)
+
+    assert QGuiApplication.clipboard().text() == "one\ntwo"
+
+
+def test_copy_selection_to_clipboard_is_noop_when_nothing_selected(qapp):
+    history_list = QListWidget()
+    history_list.addItems(["one", "two"])
+    QGuiApplication.clipboard().setText("unchanged")
+
+    _copy_selection_to_clipboard(history_list)
+
+    assert QGuiApplication.clipboard().text() == "unchanged"
+
+
+def test_history_dialog_shows_placeholder_when_history_empty(qapp, monkeypatch):
+    monkeypatch.setattr(TerminalWidget, "start", lambda self, cwd: None)
+    pane = ShellPane(1, os.path.expanduser("~"))
+
+    pane._show_history()
+
+    dialog = pane.findChild(QDialog)
+    history_list = dialog.findChild(QListWidget)
+    assert history_list.count() == 1
+    assert history_list.item(0).text() == "No commands recorded yet"
+    assert not (history_list.item(0).flags() & Qt.ItemIsSelectable)
+
+    dialog.close()
+
+
+def test_history_dialog_does_not_show_placeholder_when_history_present(qapp, monkeypatch):
+    monkeypatch.setattr(TerminalWidget, "start", lambda self, cwd: None)
+    pane = ShellPane(1, os.path.expanduser("~"))
+    pane.terminal.load_history(["cmd one"])
+
+    pane._show_history()
+
+    dialog = pane.findChild(QDialog)
+    history_list = dialog.findChild(QListWidget)
+    items = [history_list.item(i).text() for i in range(history_list.count())]
+    assert "No commands recorded yet" not in items
+
+    dialog.close()
