@@ -1,6 +1,10 @@
 import os
 import time
 
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QDialog, QListWidget, QPushButton
+
 from shell_pane import ShellPane
 from terminal_widget import TerminalWidget
 
@@ -89,3 +93,33 @@ def test_restart_does_not_leak_process_and_does_not_show_exited_status(qapp, tmp
     assert "exited" not in pane.status_label.text().lower()
 
     pane.terminate()
+
+
+def test_show_history_opens_dialog_listing_terminal_history(qapp, monkeypatch):
+    monkeypatch.setattr(TerminalWidget, "start", lambda self, cwd: None)
+    pane = ShellPane(1, os.path.expanduser("~"))
+    pane.terminal.load_history(["PS C:\\> git status", "PS C:\\> ls"])
+
+    pane._show_history()
+
+    dialogs = pane.findChildren(QDialog)
+    assert len(dialogs) == 1
+    history_list = dialogs[0].findChild(QListWidget)
+    items = [history_list.item(i).text() for i in range(history_list.count())]
+    assert items == ["PS C:\\> git status", "PS C:\\> ls"]
+
+    dialogs[0].close()
+
+
+def test_history_button_click_opens_dialog(qapp, monkeypatch):
+    monkeypatch.setattr(TerminalWidget, "start", lambda self, cwd: None)
+    pane = ShellPane(1, os.path.expanduser("~"))
+    pane.terminal.load_history(["cmd one"])
+    history_btn = next(b for b in pane.findChildren(QPushButton) if b.text() == "History")
+
+    QTest.mouseClick(history_btn, Qt.LeftButton)
+
+    dialogs = pane.findChildren(QDialog)
+    assert len(dialogs) == 1
+
+    dialogs[0].close()

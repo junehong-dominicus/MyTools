@@ -1,7 +1,8 @@
 import os
 
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout,
+    QDialog, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QPushButton, QVBoxLayout,
 )
 
 from terminal_widget import TerminalWidget
@@ -35,6 +36,10 @@ class ShellPane(QFrame):
         restart_btn.clicked.connect(self.start_shell)
         header_layout.addWidget(restart_btn)
 
+        history_btn = QPushButton("History")
+        history_btn.clicked.connect(self._show_history)
+        header_layout.addWidget(history_btn)
+
         layout.addWidget(header)
 
         self.status_label = QLabel("")
@@ -65,6 +70,17 @@ class ShellPane(QFrame):
         directory = QFileDialog.getExistingDirectory(self, "Select start directory", self.path_edit.text())
         if directory:
             self.path_edit.setText(directory)
+
+    def _show_history(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Shell {self.pane_id} History")
+        dialog_layout = QVBoxLayout(dialog)
+        history_list = QListWidget()
+        history_list.addItems(self.terminal.get_history())
+        dialog_layout.addWidget(history_list)
+        dialog.resize(500, 400)
+        dialog.show()
+        history_list.scrollToBottom()
 
     def terminate(self) -> None:
         self.terminal.backend.terminate()
