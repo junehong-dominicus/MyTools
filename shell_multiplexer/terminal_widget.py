@@ -29,6 +29,11 @@ DEFAULT_BG = "#1e1e1e"
 # one final size, rather than reacting to each transient intermediate size.
 _RESIZE_DEBOUNCE_MS = 150
 
+# How many typed command lines to remember per pane (see keyPressEvent).
+# Also duplicated as settings.MAX_HISTORY_ENTRIES for capping on load --
+# settings.py has no Qt/pyte dependency and must stay that way.
+MAX_HISTORY_ENTRIES = 200
+
 
 def compute_grid_size(widget_width: int, widget_height: int, cell_width: int, cell_height: int) -> tuple[int, int]:
     cols = max(1, widget_width // cell_width)
@@ -96,6 +101,7 @@ class TerminalWidget(QWidget):
         # what the widget can actually show right now.
         self._visible_cols = 80
         self._visible_rows = 24
+        self._history: list[str] = []
         self._font = QFont("Consolas", 10)
         self._metrics = QFontMetrics(self._font)
 
@@ -188,6 +194,12 @@ class TerminalWidget(QWidget):
             self._apply_size_from_geometry()
         self.update()
 
+    def get_history(self) -> list[str]:
+        return list(self._history)
+
+    def load_history(self, entries: list[str]) -> None:
+        self._history = list(entries)[-MAX_HISTORY_ENTRIES:]
+
     def _on_output(self, text: str) -> None:
         if self.screen:
             self.screen.feed(text)
@@ -220,6 +232,11 @@ class TerminalWidget(QWidget):
 
     def keyPressEvent(self, event) -> None:
         text = translate_key_event(event)
+        if text == "\r" and self.screen is not None:
+            line = self.screen.get_line_text(self.screen.cursor.y).strip()
+            if line:
+                self._history.append(line)
+                self._history = self._history[-MAX_HISTORY_ENTRIES:]
         if text:
             self.backend.write(text)
 

@@ -12,6 +12,7 @@ from terminal_widget import (
     ANSI_BRIGHT_COLORS,
     ANSI_COLORS,
     DEFAULT_FG,
+    MAX_HISTORY_ENTRIES,
     _RESIZE_DEBOUNCE_MS,
     TerminalWidget,
     compute_grid_size,
@@ -351,6 +352,69 @@ def test_rapid_resize_churn_does_not_wipe_already_rendered_content(qapp, tmp_pat
     assert "PS C:/Users>" in widget.screen._screen.display[0]
 
     widget._repaint_timer.stop()
+    widget._blink_timer.stop()
+
+
+def test_enter_with_content_appends_to_history(qapp):
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.screen.feed("PS C:\\> git status")
+
+    QTest.keyClick(widget, Qt.Key_Return)
+
+    assert widget.get_history() == ["PS C:\\> git status"]
+
+    widget._blink_timer.stop()
+
+
+def test_enter_on_blank_line_does_not_append(qapp):
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+
+    QTest.keyClick(widget, Qt.Key_Return)
+
+    assert widget.get_history() == []
+
+    widget._blink_timer.stop()
+
+
+def test_enter_with_no_screen_does_not_crash(qapp):
+    widget = TerminalWidget()  # screen is None -- start() never called
+
+    QTest.keyClick(widget, Qt.Key_Return)
+
+    assert widget.get_history() == []
+
+    widget._blink_timer.stop()
+
+
+def test_load_history_truncates_to_max_entries(qapp):
+    widget = TerminalWidget()
+    widget.load_history([f"cmd{i}" for i in range(MAX_HISTORY_ENTRIES + 5)])
+
+    history = widget.get_history()
+
+    assert len(history) == MAX_HISTORY_ENTRIES
+    assert history[0] == "cmd5"
+    assert history[-1] == f"cmd{MAX_HISTORY_ENTRIES + 4}"
+
+    widget._blink_timer.stop()
+
+
+def test_history_caps_at_max_entries_when_appending(qapp):
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.load_history([f"old{i}" for i in range(MAX_HISTORY_ENTRIES)])
+    widget.screen.feed("newest")
+
+    QTest.keyClick(widget, Qt.Key_Return)
+
+    history = widget.get_history()
+
+    assert len(history) == MAX_HISTORY_ENTRIES
+    assert history[0] == "old1"  # "old0" dropped to make room
+    assert history[-1] == "newest"
+
     widget._blink_timer.stop()
 
 
