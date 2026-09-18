@@ -255,6 +255,16 @@ def test_history_with_non_string_entries_falls_back_to_empty(tmp_path):
     assert histories == {1: []}
 
 
+def test_max_history_entries_matches_terminal_widget():
+    # settings.py and terminal_widget.py each independently define
+    # MAX_HISTORY_ENTRIES = 200 (deliberately, so settings.py stays free of
+    # Qt/pyte dependencies). Nothing else enforces they stay equal -- this
+    # fails loudly if a future edit changes one without the other.
+    from terminal_widget import MAX_HISTORY_ENTRIES as terminal_widget_max
+
+    assert MAX_HISTORY_ENTRIES == terminal_widget_max
+
+
 def test_history_is_capped_on_load(tmp_path):
     path = tmp_path / "cfg.json"
     long_history = [f"cmd{i}" for i in range(MAX_HISTORY_ENTRIES + 50)]

@@ -25,12 +25,19 @@ def save_settings_file(
     pane_histories: dict[int, list[str]] | None = None,
 ) -> None:
     pane_histories = pane_histories or {}
+    # Iterate the union of pane_paths and pane_histories keys, not just
+    # pane_paths: a pane_id can have recorded history while temporarily
+    # having no live pane (e.g. SHELL COUNT shrunk below it), in which case
+    # pane_paths won't mention it at all. Iterating pane_paths alone would
+    # silently drop that pane's history from the saved file even though the
+    # caller passed it in.
+    pane_ids = set(pane_paths) | set(pane_histories)
     config = {
         "layout_mode": layout_mode,
         "font_size": font_size,
         "panes": {
-            str(pid): {"start_path": p, "history": pane_histories.get(pid, [])}
-            for pid, p in pane_paths.items()
+            str(pid): {"start_path": pane_paths.get(pid, ""), "history": pane_histories.get(pid, [])}
+            for pid in pane_ids
         },
     }
     try:

@@ -232,3 +232,63 @@ def test_settings_round_trip_across_instances_includes_history(qapp, monkeypatch
     window2 = MainWindow(config_dir=config_dir)
 
     assert window2.panes[0].terminal.get_history() == ["PS C:\\> ls", "PS C:\\> git status"]
+
+
+def test_history_survives_shrink_and_grow_shell_count(qapp, monkeypatch, tmp_path):
+    # Regression test for Finding 3: SHELL COUNT 4 -> 1 tears down panes
+    # 2-4. Going back to 4 must not have lost pane 2's history, even though
+    # it had no live pane in between.
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+    window.build_panes("4")
+    pane2 = next(p for p in window.panes if p.pane_id == 2)
+    pane2.terminal.load_history(["PS C:\\> pane2 command"])
+
+    window.build_panes("1")  # panes 2-4 torn down
+    window.build_panes("4")  # panes 2-4 rebuilt
+
+    pane2_again = next(p for p in window.panes if p.pane_id == 2)
+    assert pane2_again.terminal.get_history() == ["PS C:\\> pane2 command"]
+
+
+def test_history_survives_shrink_then_save_then_fresh_instance(qapp, monkeypatch, tmp_path):
+    # Regression test for Finding 3: shrinking SHELL COUNT to 1 and then
+    # clicking Save must not silently overwrite the on-disk history for
+    # panes 2-4 with nothing, even though they have no live pane at Save
+    # time and are never visible in the UI again before the fresh instance
+    # loads the config back from disk.
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    config_dir = str(tmp_path / "configs")
+    window = MainWindow(config_dir=config_dir)
+    window.build_panes("4")
+    pane2 = next(p for p in window.panes if p.pane_id == 2)
+    pane2.terminal.load_history(["PS C:\\> pane2 command"])
+
+    window.build_panes("1")  # panes 2-4 torn down, never touched again
+    window.save_current_config()
+
+    window2 = MainWindow(config_dir=config_dir)
+    window2.build_panes("4")
+    pane2_reloaded = next(p for p in window2.panes if p.pane_id == 2)
+    assert pane2_reloaded.terminal.get_history() == ["PS C:\\> pane2 command"]
+
+
+def test_load_config_restores_history(qapp, monkeypatch, tmp_path):
+    # Regression test for Finding 4: the existing round-trip test only
+    # exercises history restoration through a *fresh* MainWindow
+    # constructor. This exercises the _load_config path (as invoked by the
+    # Load button, via load_selected_config) directly on an existing
+    # instance.
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+    window.panes[0].terminal.load_history(["PS C:\\> ls"])
+    window.save_current_config()
+    # save_current_config()/_write_config() already selects the just-saved
+    # config in config_combo (via refresh_config_list(select=name)), so
+    # load_selected_config() below reloads that same config.
+    assert window.config_combo.currentText() == DEFAULT_CONFIG_NAME
+
+    window.panes[0].terminal.load_history([])  # simulate history no longer visible in the UI
+    window.load_selected_config()
+
+    assert window.panes[0].terminal.get_history() == ["PS C:\\> ls"]

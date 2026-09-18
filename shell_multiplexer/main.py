@@ -33,6 +33,13 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 800)
 
         self.panes: list[ShellPane] = []
+        # Persists per-pane history across build_panes() rebuilds (e.g.
+        # SHELL COUNT changes) even for pane_ids that don't currently have a
+        # live pane -- see build_panes()/_write_config(). Updated, never
+        # wholesale-replaced, so shrinking SHELL COUNT and then growing it
+        # back (or Save-ing while shrunk) doesn't lose history for the
+        # panes that were temporarily torn down.
+        self._pane_histories: dict[int, list[str]] = {}
         self.current_mode = DEFAULT_LAYOUT_MODE
         self.current_font_size = DEFAULT_FONT_SIZE
         self.pane_area_layout = None
@@ -126,9 +133,18 @@ class MainWindow(QMainWindow):
         if initial_paths:
             prior_paths.update(initial_paths)
 
-        prior_histories = {p.pane_id: p.terminal.get_history() for p in self.panes}
+        # Refresh self._pane_histories with each currently-live pane's latest
+        # history before tearing panes down -- update, not replace, so
+        # entries for pane_ids that aren't currently live (already tucked
+        # away from an earlier shrink) are retained rather than lost. A
+        # passed-in initial_histories (from _load_config, or the initial
+        # config load in __init__) is then treated as authoritative for the
+        # pane_ids it contains, overriding whatever's currently tracked for
+        # those ids.
+        for pane in self.panes:
+            self._pane_histories[pane.pane_id] = pane.terminal.get_history()
         if initial_histories:
-            prior_histories.update(initial_histories)
+            self._pane_histories.update(initial_histories)
 
         for pane in self.panes:
             pane.terminate()
@@ -146,12 +162,12 @@ class MainWindow(QMainWindow):
         main_splitter = QSplitter(Qt.Vertical)
         for row in rows:
             if len(row) == 1:
-                pane = self._make_pane(row[0], prior_paths, prior_histories)
+                pane = self._make_pane(row[0], prior_paths, self._pane_histories)
                 main_splitter.addWidget(pane)
             else:
                 row_splitter = QSplitter(Qt.Horizontal)
                 for pane_id in row:
-                    pane = self._make_pane(pane_id, prior_paths, prior_histories)
+                    pane = self._make_pane(pane_id, prior_paths, self._pane_histories)
                     row_splitter.addWidget(pane)
                 main_splitter.addWidget(row_splitter)
 
@@ -189,8 +205,17 @@ class MainWindow(QMainWindow):
     def _write_config(self, name: str) -> None:
         os.makedirs(self.config_dir, exist_ok=True)
         pane_paths = {p.pane_id: p.path_edit.text() for p in self.panes}
-        pane_histories = {p.pane_id: p.terminal.get_history() for p in self.panes}
-        save_settings_file(config_file_path(self.config_dir, name), self.current_mode, pane_paths, self.current_font_size, pane_histories)
+        # Refresh self._pane_histories with each live pane's latest history
+        # (in case something was typed since the last rebuild), then save
+        # from self._pane_histories itself -- not a live-panes-only dict --
+        # so history for pane_ids currently hidden by a smaller SHELL COUNT
+        # is written to disk too, instead of being silently dropped.
+        for pane in self.panes:
+            self._pane_histories[pane.pane_id] = pane.terminal.get_history()
+        save_settings_file(
+            config_file_path(self.config_dir, name), self.current_mode, pane_paths,
+            self.current_font_size, self._pane_histories,
+        )
         self.refresh_config_list(select=name)
 
     def _load_config(self, name: str) -> None:
@@ -205,6 +230,11 @@ class MainWindow(QMainWindow):
         self.shell_count_combo.setCurrentText(mode)
         self.shell_count_combo.blockSignals(False)
 
+        # histories flows into build_panes(initial_histories=...), which
+        # merges (updates, doesn't replace) it into self._pane_histories --
+        # the loaded config's history is authoritative for the pane_ids it
+        # contains, while pane_ids it doesn't mention keep whatever
+        # self._pane_histories already had for them.
         self.build_panes(mode, paths, histories)
 
     def save_current_config(self) -> None:
