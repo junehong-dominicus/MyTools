@@ -209,3 +209,26 @@ def test_migrates_legacy_single_file_config(qapp, monkeypatch, tmp_path):
     assert window.current_mode == "3T"
     assert window.current_font_size == 14
     assert window.panes[0].path_edit.text() == "C:\\Legacy"
+
+
+def test_history_carries_forward_across_rebuild(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+    window.panes[0].terminal.load_history(["PS C:\\> git status"])
+
+    window.build_panes("2")
+
+    assert window.panes[0].terminal.get_history() == ["PS C:\\> git status"]
+
+
+def test_settings_round_trip_across_instances_includes_history(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    config_dir = str(tmp_path / "configs")
+
+    window = MainWindow(config_dir=config_dir)
+    window.panes[0].terminal.load_history(["PS C:\\> ls", "PS C:\\> git status"])
+    window.save_current_config()
+
+    window2 = MainWindow(config_dir=config_dir)
+
+    assert window2.panes[0].terminal.get_history() == ["PS C:\\> ls", "PS C:\\> git status"]

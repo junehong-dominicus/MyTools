@@ -101,7 +101,7 @@ class MainWindow(QMainWindow):
 
         migrate_legacy_config(self.config_dir)
         default_path = config_file_path(self.config_dir, DEFAULT_CONFIG_NAME)
-        initial_mode, initial_paths, initial_font_size = load_settings_file(default_path)
+        initial_mode, initial_paths, initial_font_size, initial_histories = load_settings_file(default_path)
         self.current_font_size = initial_font_size
 
         self.shell_count_combo.blockSignals(True)
@@ -114,17 +114,21 @@ class MainWindow(QMainWindow):
         self.font_size_combo.blockSignals(False)
         self.font_size_combo.currentTextChanged.connect(self._on_font_size_changed)
 
-        self.build_panes(initial_mode, initial_paths)
+        self.build_panes(initial_mode, initial_paths, initial_histories)
 
         if os.path.exists(default_path):
             self.refresh_config_list(select=DEFAULT_CONFIG_NAME)
         else:
             self._write_config(DEFAULT_CONFIG_NAME)
 
-    def build_panes(self, mode: str, initial_paths: dict[int, str] | None = None) -> None:
+    def build_panes(self, mode: str, initial_paths: dict[int, str] | None = None, initial_histories: dict[int, list[str]] | None = None) -> None:
         prior_paths = {p.pane_id: p.path_edit.text() for p in self.panes}
         if initial_paths:
             prior_paths.update(initial_paths)
+
+        prior_histories = {p.pane_id: p.terminal.get_history() for p in self.panes}
+        if initial_histories:
+            prior_histories.update(initial_histories)
 
         for pane in self.panes:
             pane.terminate()
@@ -142,21 +146,22 @@ class MainWindow(QMainWindow):
         main_splitter = QSplitter(Qt.Vertical)
         for row in rows:
             if len(row) == 1:
-                pane = self._make_pane(row[0], prior_paths)
+                pane = self._make_pane(row[0], prior_paths, prior_histories)
                 main_splitter.addWidget(pane)
             else:
                 row_splitter = QSplitter(Qt.Horizontal)
                 for pane_id in row:
-                    pane = self._make_pane(pane_id, prior_paths)
+                    pane = self._make_pane(pane_id, prior_paths, prior_histories)
                     row_splitter.addWidget(pane)
                 main_splitter.addWidget(row_splitter)
 
         self.pane_area_layout.addWidget(main_splitter)
 
-    def _make_pane(self, pane_id: int, prior_paths: dict[int, str]) -> ShellPane:
+    def _make_pane(self, pane_id: int, prior_paths: dict[int, str], prior_histories: dict[int, list[str]]) -> ShellPane:
         path = prior_paths.get(pane_id, os.path.expanduser("~"))
         pane = ShellPane(pane_id, path)
         pane.terminal.set_font_size(self.current_font_size)
+        pane.terminal.load_history(prior_histories.get(pane_id, []))
         self.panes.append(pane)
         pane.start_shell()
         return pane
@@ -184,11 +189,12 @@ class MainWindow(QMainWindow):
     def _write_config(self, name: str) -> None:
         os.makedirs(self.config_dir, exist_ok=True)
         pane_paths = {p.pane_id: p.path_edit.text() for p in self.panes}
-        save_settings_file(config_file_path(self.config_dir, name), self.current_mode, pane_paths, self.current_font_size)
+        pane_histories = {p.pane_id: p.terminal.get_history() for p in self.panes}
+        save_settings_file(config_file_path(self.config_dir, name), self.current_mode, pane_paths, self.current_font_size, pane_histories)
         self.refresh_config_list(select=name)
 
     def _load_config(self, name: str) -> None:
-        mode, paths, font_size = load_settings_file(config_file_path(self.config_dir, name))
+        mode, paths, font_size, histories = load_settings_file(config_file_path(self.config_dir, name))
         self.current_font_size = font_size
 
         self.font_size_combo.blockSignals(True)
@@ -199,7 +205,7 @@ class MainWindow(QMainWindow):
         self.shell_count_combo.setCurrentText(mode)
         self.shell_count_combo.blockSignals(False)
 
-        self.build_panes(mode, paths)
+        self.build_panes(mode, paths, histories)
 
     def save_current_config(self) -> None:
         name = self.config_combo.currentText() or DEFAULT_CONFIG_NAME
