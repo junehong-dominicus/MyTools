@@ -1,12 +1,16 @@
 import json
 import os
+import re
+import shutil
 
 from layout import LAYOUT_MODES
 
 DEFAULT_LAYOUT_MODE = "1"
 FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18]
 DEFAULT_FONT_SIZE = 10
-CONFIG_FILENAME = "shell_config.json"
+CONFIG_FILENAME = "shell_config.json"  # legacy single-file location, pre-multi-config
+CONFIG_DIR = "configs"
+DEFAULT_CONFIG_NAME = "default"
 
 
 def save_settings_file(path: str, layout_mode: str, pane_paths: dict[int, str], font_size: int = DEFAULT_FONT_SIZE) -> None:
@@ -53,3 +57,33 @@ def load_settings_file(path: str) -> tuple[str, dict[int, str], int]:
         # a dict -- these must fall back to defaults just like malformed
         # JSON, not crash the whole app at startup.
         return DEFAULT_LAYOUT_MODE, {}, DEFAULT_FONT_SIZE
+
+
+def config_file_path(config_dir: str, name: str) -> str:
+    return os.path.join(config_dir, f"{name}.json")
+
+
+def sanitize_config_name(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "_", name.strip())
+
+
+def list_config_names(config_dir: str) -> list[str]:
+    if not os.path.isdir(config_dir):
+        return []
+    names = sorted(
+        os.path.splitext(f)[0] for f in os.listdir(config_dir) if f.endswith(".json")
+    )
+    if DEFAULT_CONFIG_NAME in names:
+        names.remove(DEFAULT_CONFIG_NAME)
+        names.insert(0, DEFAULT_CONFIG_NAME)
+    return names
+
+
+def migrate_legacy_config(config_dir: str, legacy_path: str = CONFIG_FILENAME) -> None:
+    if os.path.isdir(config_dir) or not os.path.exists(legacy_path):
+        return
+    os.makedirs(config_dir, exist_ok=True)
+    try:
+        shutil.move(legacy_path, config_file_path(config_dir, DEFAULT_CONFIG_NAME))
+    except OSError as e:
+        print(f"Config migration error: {e}")

@@ -221,6 +221,7 @@ __marimo__/
 /exe/logs/
 serial_config_v2.json
 shell_config.json
+configs/
 
 # Claude Code tool state (worktrees, session/scheduling state, etc.)
 .claude/

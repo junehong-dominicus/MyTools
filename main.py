@@ -1,5 +1,7 @@
 import sys
 import os
+import re
+import shutil
 import time
 import threading
 import json
@@ -8,7 +10,7 @@ from datetime import datetime
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QPushButton, QTextEdit, QSplitter,
-                             QFrame, QGroupBox, QMenu, QLineEdit)
+                             QFrame, QGroupBox, QMenu, QLineEdit, QInputDialog, QMessageBox)
 from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtGui import QFont, QTextCursor, QIcon
 
@@ -233,6 +235,19 @@ class SerialPane(QFrame):
 DEFAULT_PANE_COUNT = 1
 MAX_PANE_COUNT = 4
 
+CONFIG_DIR = "configs"
+DEFAULT_CONFIG_NAME = "default"
+LEGACY_CONFIG_FILENAME = "serial_config_v2.json"  # pre-multi-config location
+
+
+def config_path(name):
+    return os.path.join(CONFIG_DIR, f"{name}.json")
+
+
+def sanitize_config_name(name):
+    return re.sub(r"[^A-Za-z0-9_-]", "_", name.strip())
+
+
 class MyToolsApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -272,9 +287,22 @@ class MyToolsApp(QMainWindow):
         refresh_btn.clicked.connect(self.refresh_all_ports)
         t_layout.addWidget(refresh_btn)
 
-        save_btn = QPushButton("Save Settings")
-        save_btn.clicked.connect(self.save_settings)
+        t_layout.addWidget(QLabel("CONFIG:"))
+        self.config_combo = QComboBox()
+        self.config_combo.setFixedWidth(120)
+        t_layout.addWidget(self.config_combo)
+
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(self.save_current_config)
         t_layout.addWidget(save_btn)
+
+        save_as_btn = QPushButton("Save As…")
+        save_as_btn.clicked.connect(self.save_config_as)
+        t_layout.addWidget(save_as_btn)
+
+        load_btn = QPushButton("Load")
+        load_btn.clicked.connect(self.load_selected_config)
+        t_layout.addWidget(load_btn)
 
         scan_btn = QPushButton("⚲ NETWORK SCAN")
         scan_btn.setStyleSheet(
@@ -293,7 +321,12 @@ class MyToolsApp(QMainWindow):
         layout.addWidget(self.pane_area)
 
         self.build_panes(DEFAULT_PANE_COUNT)
-        self.load_settings()
+        self._migrate_legacy_config()
+        if not os.path.exists(config_path(DEFAULT_CONFIG_NAME)):
+            self._write_config(DEFAULT_CONFIG_NAME)
+        else:
+            self._load_config(DEFAULT_CONFIG_NAME)
+            self.refresh_config_list(select=DEFAULT_CONFIG_NAME)
 
     def build_panes(self, count):
         """(Re)build the pane widgets for `count` ports.
@@ -359,40 +392,91 @@ class MyToolsApp(QMainWindow):
         for pane in self.panes:
             pane.refresh_ports()
 
-    def save_settings(self):
-        config = {
+    def _migrate_legacy_config(self):
+        if os.path.isdir(CONFIG_DIR) or not os.path.exists(LEGACY_CONFIG_FILENAME):
+            return
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        try:
+            shutil.move(LEGACY_CONFIG_FILENAME, config_path(DEFAULT_CONFIG_NAME))
+        except OSError as e:
+            print(f"Config migration error: {e}")
+
+    def refresh_config_list(self, select=None):
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        names = sorted(
+            os.path.splitext(f)[0] for f in os.listdir(CONFIG_DIR) if f.endswith(".json")
+        )
+        if DEFAULT_CONFIG_NAME in names:
+            names.remove(DEFAULT_CONFIG_NAME)
+            names.insert(0, DEFAULT_CONFIG_NAME)
+
+        self.config_combo.blockSignals(True)
+        self.config_combo.clear()
+        self.config_combo.addItems(names)
+        self.config_combo.blockSignals(False)
+
+        if select and select in names:
+            self.config_combo.setCurrentText(select)
+
+    def _build_config_dict(self):
+        return {
             "port_count": len(self.panes),
             "panes": {
                 str(pane.pane_id): {"port": pane.port_combo.currentText(), "baud": pane.baud_combo.currentText()}
                 for pane in self.panes
             },
         }
+
+    def _write_config(self, name):
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        config = self._build_config_dict()
         try:
-            with open("serial_config_v2.json", "w") as f:
+            with open(config_path(name), "w") as f:
                 json.dump(config, f, indent=4)
-        except Exception as e:
+        except OSError as e:
             print(f"Save error: {e}")
+        self.refresh_config_list(select=name)
 
-    def load_settings(self):
-        if not os.path.exists("serial_config_v2.json"): return
+    def _apply_config_dict(self, config):
+        port_count = config.get("port_count", DEFAULT_PANE_COUNT)
+        if not isinstance(port_count, int) or not (1 <= port_count <= MAX_PANE_COUNT):
+            port_count = DEFAULT_PANE_COUNT
+        if port_count != len(self.panes):
+            self.port_count_combo.setCurrentText(str(port_count))  # triggers build_panes via signal
+
+        p_cfg = config.get("panes", {})
+        for pane in self.panes:
+            p_id = str(pane.pane_id)
+            if p_id in p_cfg:
+                pane.port_combo.setCurrentText(p_cfg[p_id].get("port", ""))
+                pane.baud_combo.setCurrentText(p_cfg[p_id].get("baud", "115200"))
+
+    def _load_config(self, name):
         try:
-            with open("serial_config_v2.json", "r") as f:
+            with open(config_path(name), "r") as f:
                 config = json.load(f)
-
-            port_count = config.get("port_count", DEFAULT_PANE_COUNT)
-            if not isinstance(port_count, int) or not (1 <= port_count <= MAX_PANE_COUNT):
-                port_count = DEFAULT_PANE_COUNT
-            if port_count != len(self.panes):
-                self.port_count_combo.setCurrentText(str(port_count))  # triggers build_panes via signal
-
-            p_cfg = config.get("panes", {})
-            for pane in self.panes:
-                p_id = str(pane.pane_id)
-                if p_id in p_cfg:
-                    pane.port_combo.setCurrentText(p_cfg[p_id].get("port", ""))
-                    pane.baud_combo.setCurrentText(p_cfg[p_id].get("baud", "115200"))
+            self._apply_config_dict(config)
         except (json.JSONDecodeError, KeyError, OSError):
             pass
+
+    def save_current_config(self):
+        name = self.config_combo.currentText() or DEFAULT_CONFIG_NAME
+        self._write_config(name)
+
+    def save_config_as(self):
+        name, ok = QInputDialog.getText(self, "Save Config As", "Config name:")
+        if not ok or not name.strip():
+            return
+        safe_name = sanitize_config_name(name)
+        if not safe_name:
+            QMessageBox.warning(self, "Invalid name", "Please use letters, numbers, - or _.")
+            return
+        self._write_config(safe_name)
+
+    def load_selected_config(self):
+        name = self.config_combo.currentText()
+        if name:
+            self._load_config(name)
 
 def main():
     app = QApplication(sys.argv)

@@ -1,6 +1,11 @@
 import json
+import os
 
-from settings import DEFAULT_FONT_SIZE, DEFAULT_LAYOUT_MODE, load_settings_file, save_settings_file
+from settings import (
+    DEFAULT_CONFIG_NAME, DEFAULT_FONT_SIZE, DEFAULT_LAYOUT_MODE, config_file_path,
+    list_config_names, load_settings_file, migrate_legacy_config, sanitize_config_name,
+    save_settings_file,
+)
 
 
 def test_round_trip(tmp_path):
@@ -138,3 +143,67 @@ def test_loading_a_config_saved_before_font_size_existed(tmp_path):
     assert mode == "2"
     assert paths == {1: "C:\\a"}
     assert font_size == DEFAULT_FONT_SIZE
+
+
+def test_config_file_path_joins_dir_and_name(tmp_path):
+    assert config_file_path(str(tmp_path), "myrig") == os.path.join(str(tmp_path), "myrig.json")
+
+
+def test_sanitize_config_name_keeps_safe_characters():
+    assert sanitize_config_name("my-rig_2") == "my-rig_2"
+
+
+def test_sanitize_config_name_replaces_unsafe_characters():
+    assert sanitize_config_name("my rig!/../etc") == "my_rig_____etc"
+
+
+def test_sanitize_config_name_strips_surrounding_whitespace():
+    assert sanitize_config_name("  myrig  ") == "myrig"
+
+
+def test_list_config_names_on_missing_dir_returns_empty(tmp_path):
+    assert list_config_names(str(tmp_path / "nope")) == []
+
+
+def test_list_config_names_pins_default_first(tmp_path):
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    (config_dir / "zebra.json").write_text("{}")
+    (config_dir / "default.json").write_text("{}")
+    (config_dir / "alpha.json").write_text("{}")
+
+    assert list_config_names(str(config_dir)) == [DEFAULT_CONFIG_NAME, "alpha", "zebra"]
+
+
+def test_migrate_legacy_config_moves_file_into_dir(tmp_path):
+    config_dir = str(tmp_path / "configs")
+    legacy_path = str(tmp_path / "shell_config.json")
+    save_settings_file(legacy_path, "2V", {1: "C:\\a"}, font_size=14)
+
+    migrate_legacy_config(config_dir, legacy_path=legacy_path)
+
+    assert not os.path.exists(legacy_path)
+    mode, paths, font_size = load_settings_file(config_file_path(config_dir, DEFAULT_CONFIG_NAME))
+    assert mode == "2V"
+    assert paths == {1: "C:\\a"}
+    assert font_size == 14
+
+
+def test_migrate_legacy_config_is_noop_when_dir_already_exists(tmp_path):
+    config_dir = str(tmp_path / "configs")
+    os.makedirs(config_dir)
+    legacy_path = str(tmp_path / "shell_config.json")
+    save_settings_file(legacy_path, "2V", {1: "C:\\a"})
+
+    migrate_legacy_config(config_dir, legacy_path=legacy_path)
+
+    assert os.path.exists(legacy_path)  # left alone -- configs/ already exists
+    assert not os.path.exists(config_file_path(config_dir, DEFAULT_CONFIG_NAME))
+
+
+def test_migrate_legacy_config_is_noop_when_legacy_file_missing(tmp_path):
+    config_dir = str(tmp_path / "configs")
+
+    migrate_legacy_config(config_dir, legacy_path=str(tmp_path / "shell_config.json"))
+
+    assert not os.path.exists(config_dir)
