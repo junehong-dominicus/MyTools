@@ -1,0 +1,300 @@
+E B�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x12 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6380
+ho 0 tail 12 room 4
+load:0x40078000,len:15916
+load:0x40080400,len:3860
+entry 0x40080638
+I (29) boot: ESP-IDF v5.5.1 2nd stage bootloader
+I (29) boot: compile time Feb  6 2026 10:42:23
+I (29) boot: Multicore bootloader
+I (31) boot: chip revision: v3.1
+I (33) boot.esp32: SPI Speed      : 40MHz
+I (37) boot.esp32: SPI Mode       : DIO
+I (41) boot.esp32: SPI Flash Size : 16MB
+I (44) boot: Enabling RNG early entropy source...
+I (49) boot: Partition Table:
+I (51) boot: ## Label            Usage          Type ST Offset   Length
+I (58) boot:  0 nvs              WiFi data        01 02 00011000 00006000
+I (64) boot:  1 otadata          OTA data         01 00 00017000 00002000
+I (71) boot:  2 phy_init         RF data          01 01 00019000 00001000
+I (77) boot:  3 ota_0            OTA app          00 10 00020000 00180000
+I (84) boot:  4 ota_1            OTA app          00 11 001a0000 00180000
+I (90) boot: End of partition table
+I (94) esp_image: segment 0: paddr=00020020 vaddr=3f400020 size=2e21ch (188956) map
+I (166) esp_image: segment 1: paddr=0004e244 vaddr=3ffb0000 size=01dd4h (  7636) load
+I (169) esp_image: segment 2: paddr=00050020 vaddr=400d0020 size=ba104h (762116) map
+I (430) esp_image: segment 3: paddr=0010a12c vaddr=3ffb1dd4 size=02708h (  9992) load
+I (434) esp_image: segment 4: paddr=0010c83c vaddr=40080000 size=1cd3ch (118076) load
+I (480) esp_image: segment 5: paddr=00129580 vaddr=50000000 size=00020h (    32) load
+I (494) boot: Loaded app from partition at offset 0x20000
+I (494) boot: Disabling RNG early entropy source...
+I (505) quad_psram: This chip is ESP32-D0WD
+I (507) esp_psram: Found 8MB PSRAM device
+I (507) esp_psram: Speed: 40MHz
+I (507) esp_psram: PSRAM initialized, cache is in low/high (2-core) mode.
+W (512) esp_psram: Virtual address not enough for PSRAM, map as much as we can. 4MB is mapped
+I (520) cpu_start: Multicore app
+I (1429) esp_psram: SPI SRAM memory test OK
+I (1437) cpu_start: Pro cpu start user code
+I (1437) cpu_start: cpu freq: 160000000 Hz
+I (1437) app_init: Application information:
+I (1437) app_init: Project name:     orex-i
+I (1441) app_init: App version:      4784a60-dirty
+I (1445) app_init: Compile time:     Feb 10 2026 15:16:53
+I (1451) app_init: ELF file SHA256:  0ff74e054...
+I (1455) app_init: ESP-IDF:          v5.5.1
+I (1459) efuse_init: Min chip rev:     v0.0
+I (1463) efuse_init: Max chip rev:     v3.99 
+I (1467) efuse_init: Chip rev:         v3.1
+I (1471) heap_init: Initializing. RAM available for dynamic allocation:
+I (1477) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM
+I (1482) heap_init: At 3FFC7170 len 00018E90 (99 KiB): DRAM
+I (1488) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM
+I (1493) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM
+I (1499) heap_init: At 4009CD3C len 000032C4 (12 KiB): IRAM
+I (1504) esp_psram: Adding pool of 4096K of PSRAM memory to heap allocator
+I (1512) spi_flash: detected chip: gd
+I (1514) spi_flash: flash io: dio
+I (1518) main_task: Started on CPU0
+I (1528) esp_psram: Reserving pool of 32K of internal memory for DMA/internal allocations
+I (1528) main_task: Calling app_main()
+I (1558) OREX_I_MAIN: Checking protocol configurations...
+I (1558) OREX_I_MAIN: MODBUS_RTU: not defined
+I (1558) OREX_I_MAIN: BACNET_MSTP: defined (val=1)
+I (1558) OREX_I_MAIN: MODBUS_TCP: not defined
+I (1568) OREX_I_MAIN: BACNET_IP: defined (val=1)
+I (1568) OREX_I_MAIN: Final enabled_protocol bitmask: 0x0A
+I (1588) wifi:wifi driver task: 3ffd6e8c, prio:23, stack:6656, core=0
+I (1598) wifi:wifi firmware version: 14da9b7
+I (1598) wifi:wifi certification version: v7.0
+I (1598) wifi:config NVS flash: enabled
+I (1598) wifi:config nano formatting: disabled
+I (1608) wifi:Init data frame dynamic rx buffer num: 32
+I (1608) wifi:Init static rx mgmt buffer num: 5
+I (1608) wifi:Init management short buffer num: 32
+I (1618) wifi:Init dynamic tx buffer num: 32
+I (1618) wifi:Init static rx buffer size: 1600
+I (1628) wifi:Init static rx buffer num: 10
+I (1628) wifi:Init dynamic rx buffer num: 32
+I (1638) wifi_init: rx ba win: 6
+I (1638) wifi_init: accept mbox: 6
+I (1638) wifi_init: tcpip mbox: 32
+I (1638) wifi_init: udp mbox: 6
+I (1648) wifi_init: tcp mbox: 6
+I (1648) wifi_init: tcp tx win: 5760
+I (1648) wifi_init: tcp rx win: 5760
+I (1658) wifi_init: tcp mss: 1440
+I (1658) wifi_init: WiFi IRAM OP enabled
+I (1658) wifi_init: WiFi RX IRAM OP enabled
+W (1668) wifi:Password length matches WPA2 standards, authmode threshold changes from OPEN to WPA2
+I (1678) phy_init: phy_version 4861,b71b5ad,Aug  5 2025,11:16:06
+I (1758) wifi:mode : sta (f0:24:f9:24:83:58)
+I (1758) wifi:enable tsf
+I (1768) OREX_I_MAIN: wifi_init_sta finished.
+I (1768) OREX_I_MAIN: Waiting for Wi-Fi connection...
+I (1818) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0
+I (1818) wifi:state: init -> auth (0xb0)
+I (1848) wifi:state: auth -> assoc (0x0)
+I (1868) wifi:state: assoc -> run (0x10)
+I (1888) wifi:connected with Zuwese48, aid = 9, channel 6, BW20, bssid = 24:a4:3c:99:fb:5d
+I (1888) wifi:security: WPA2-PSK, phy: bgn, rssi: -54
+I (1888) wifi:pm start, type: 1
+
+I (1888) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us
+I (1908) wifi:AP's beacon interval = 102400 us, DTIM period = 1
+I (6608) esp_netif_handlers: sta ip: 10.0.28.144, mask: 255.255.255.0, gw: 10.0.28.1
+I (6608) OREX_I_MAIN: got ip:10.0.28.144
+I (6608) OREX_I_MAIN: Wi-Fi connected.
+I (6608) OREX_I_MAIN: orex-i Gateway Started with protocols: 0x0A
+I (6618) MAIN_BACNET: Setting BACnet Device Instance to 260001
+I (6618) MAIN_BACNET: Initializing RS485 for BACnet MS/TP...
+I (6628) uart: queue free spaces: 10
+I (6628) DLMSTP: init: Setting default UserData
+I (6628) RS485: Initialized successfully on UART2 (Baud: 38400, TX:13, RX:14, DE/RE:12)
+I (6638) MAIN_BACNET: BACnet MS/TP initialized successfully (MAC: 7)
+I (6648) MAIN_BACNET: Waiting for Wi-Fi connection before initializing BACnet/IP...
+I (6658) bip: BIP initialized on sta, IP: 10.0.28.144, Port: 47808
+I (6658) BACnetPort: MS/TP Port Configured:
+I (6668) BACnetPort:   MAC Address: 7
+I (6668) BACnetPort:   Max Master: 10
+I (6668) BACnetPort:   Max Info Frames: 0
+I (6678) BACnetPort:   Baud Rate: 38400
+I (6678) MAIN_BACNET: BACnet Port initialized
+I (6678) MAIN_BACNET: === BACnet Object List ===
+I (6688) MAIN_BACNET:   [1] Type=8 Instance=260001
+I (6688) MAIN_BACNET:   [2] Type=56 Instance=1
+I (6698) MAIN_BACNET: ===========================
+I (6698) EHIF: Registering refined BACnet discovery & EHIF callbacks
+I (6708) DATALINK: Sent PDU via BIP: Res=12 MacLen=0
+I (6708) DATALINK: Sent PDU via MSTP: Res=8 MacLen=0
+I (6718) DATALINK: Sent PDU via BIP: Res=25 MacLen=0
+I (6718) DATALINK: Sent PDU via MSTP: Res=21 MacLen=0
+I (6728) MAIN_BACNET: BACnet Stack initialized
+I (6728) DATALINK: Sent PDU via BIP: Res=25 MacLen=0
+I (6728) DATALINK: Sent PDU via MSTP: Res=21 MacLen=0
+I (6738) DATALINK: Sent PDU via BIP: Res=8 MacLen=0
+I (6738) DATALINK: Sent PDU via MSTP: Res=4 MacLen=0
+I (6848) EHIF: RX Task Started
+I (6848) EHIF: EHIF Bridge Initialized on UART1 (TX:2, RX:15) @ 115200 baud
+I (6848) OREX_I_MAIN: Running EHIF tests.
+W (6848) OREX_I_MAIN: Wi-Fi connected. EHIF Unit Tests disabled (CONFIG_OREX_I_UNIT_TEST=n).
+I (6858) OREX_I_MAIN: System Heap Info:
+I (6858) OREX_I_MAIN:   Total Free Heap: 4313776 bytes
+I (6868) OREX_I_MAIN:   Internal Free:   147643 bytes
+I (6868) OREX_I_MAIN:   SPIRAM Free:     4186128 bytes
+I (6868) main_task: Returned from app_main()
+E B�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x12 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6380
+ho 0 tail 12 room 4
+load:0x40078000,len:15916
+load:0x40080400,len:3860
+entry 0x40080638
+I (29) boot: ESP-IDF v5.5.1 2nd stage bootloader
+I (29) boot: compile time Feb  6 2026 10:42:23
+I (29) boot: Multicore bootloader
+I (31) boot: chip revision: v3.1
+I (33) boot.esp32: SPI Speed      : 40MHz
+I (37) boot.esp32: SPI Mode       : DIO
+I (41) boot.esp32: SPI Flash Size : 16MB
+I (44) boot: Enabling RNG early entropy source...
+I (49) boot: Partition Table:
+I (51) boot: ## Label            Usage          Type ST Offset   Length
+I (58) boot:  0 nvs              WiFi data        01 02 00011000 00006000
+I (64) boot:  1 otadata          OTA data         01 00 00017000 00002000
+I (71) boot:  2 phy_init         RF data          01 01 00019000 00001000
+I (77) boot:  3 ota_0            OTA app          00 10 00020000 00180000
+I (84) boot:  4 ota_1            OTA app          00 11 001a0000 00180000
+I (90) boot: End of partition table
+I (94) esp_image: segment 0: paddr=00020020 vaddr=3f400020 size=2e21ch (188956) map
+I (166) esp_image: segment 1: paddr=0004e244 vaddr=3ffb0000 size=01dd4h (  7636) load
+I (169) esp_image: segment 2: paddr=00050020 vaddr=400d0020 size=ba104h (762116) map
+I (430) esp_image: segment 3: paddr=0010a12c vaddr=3ffb1dd4 size=02708h (  9992) load
+I (434) esp_image: segment 4: paddr=0010c83c vaddr=40080000 size=1cd3ch (118076) load
+I (480) esp_image: segment 5: paddr=00129580 vaddr=50000000 size=00020h (    32) load
+I (494) boot: Loaded app from partition at offset 0x20000
+I (494) boot: Disabling RNG early entropy source...
+I (505) quad_psram: This chip is ESP32-D0WD
+I (507) esp_psram: Found 8MB PSRAM device
+I (507) esp_psram: Speed: 40MHz
+I (507) esp_psram: PSRAM initialized, cache is in low/high (2-core) mode.
+W (512) esp_psram: Virtual address not enough for PSRAM, map as much as we can. 4MB is mapped
+I (520) cpu_start: Multicore app
+I (1429) esp_psram: SPI SRAM memory test OK
+I (1437) cpu_start: Pro cpu start user code
+I (1437) cpu_start: cpu freq: 160000000 Hz
+I (1437) app_init: Application information:
+I (1437) app_init: Project name:     orex-i
+I (1441) app_init: App version:      4784a60-dirty
+I (1445) app_init: Compile time:     Feb 10 2026 15:16:53
+I (1451) app_init: ELF file SHA256:  0ff74e054...
+I (1455) app_init: ESP-IDF:          v5.5.1
+I (1459) efuse_init: Min chip rev:     v0.0
+I (1463) efuse_init: Max chip rev:     v3.99 
+I (1467) efuse_init: Chip rev:         v3.1
+I (1471) heap_init: Initializing. RAM available for dynamic allocation:
+I (1477) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM
+I (1482) heap_init: At 3FFC7170 len 00018E90 (99 KiB): DRAM
+I (1488) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM
+I (1493) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM
+I (1499) heap_init: At 4009CD3C len 000032C4 (12 KiB): IRAM
+I (1504) esp_psram: Adding pool of 4096K of PSRAM memory to heap allocator
+I (1512) spi_flash: detected chip: gd
+I (1514) spi_flash: flash io: dio
+I (1518) main_task: Started on CPU0
+I (1528) esp_psram: Reserving pool of 32K of internal memory for DMA/internal allocations
+I (1528) main_task: Calling app_main()
+I (1558) OREX_I_MAIN: Checking protocol configurations...
+I (1558) OREX_I_MAIN: MODBUS_RTU: not defined
+I (1558) OREX_I_MAIN: BACNET_MSTP: defined (val=1)
+I (1558) OREX_I_MAIN: MODBUS_TCP: not defined
+I (1568) OREX_I_MAIN: BACNET_IP: defined (val=1)
+I (1568) OREX_I_MAIN: Final enabled_protocol bitmask: 0x0A
+I (1588) wifi:wifi driver task: 3ffd6e8c, prio:23, stack:6656, core=0
+I (1598) wifi:wifi firmware version: 14da9b7
+I (1598) wifi:wifi certification version: v7.0
+I (1598) wifi:config NVS flash: enabled
+I (1598) wifi:config nano formatting: disabled
+I (1608) wifi:Init data frame dynamic rx buffer num: 32
+I (1608) wifi:Init static rx mgmt buffer num: 5
+I (1608) wifi:Init management short buffer num: 32
+I (1618) wifi:Init dynamic tx buffer num: 32
+I (1618) wifi:Init static rx buffer size: 1600
+I (1628) wifi:Init static rx buffer num: 10
+I (1628) wifi:Init dynamic rx buffer num: 32
+I (1638) wifi_init: rx ba win: 6
+I (1638) wifi_init: accept mbox: 6
+I (1638) wifi_init: tcpip mbox: 32
+I (1638) wifi_init: udp mbox: 6
+I (1648) wifi_init: tcp mbox: 6
+I (1648) wifi_init: tcp tx win: 5760
+I (1648) wifi_init: tcp rx win: 5760
+I (1658) wifi_init: tcp mss: 1440
+I (1658) wifi_init: WiFi IRAM OP enabled
+I (1658) wifi_init: WiFi RX IRAM OP enabled
+W (1668) wifi:Password length matches WPA2 standards, authmode threshold changes from OPEN to WPA2
+I (1678) phy_init: phy_version 4861,b71b5ad,Aug  5 2025,11:16:06
+I (1748) wifi:mode : sta (f0:24:f9:24:83:58)
+I (1748) wifi:enable tsf
+I (1758) OREX_I_MAIN: wifi_init_sta finished.
+I (1758) OREX_I_MAIN: Waiting for Wi-Fi connection...
+I (1768) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0
+I (1768) wifi:state: init -> auth (0xb0)
+I (1788) wifi:state: auth -> assoc (0x0)
+I (1798) wifi:state: assoc -> run (0x10)
+I (1828) wifi:connected with Zuwese48, aid = 9, channel 6, BW20, bssid = 24:a4:3c:99:fb:5d
+I (1828) wifi:security: WPA2-PSK, phy: bgn, rssi: -56
+I (1828) wifi:pm start, type: 1
+
+I (1828) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us
+I (1918) wifi:AP's beacon interval = 102400 us, DTIM period = 1
+I (3438) esp_netif_handlers: sta ip: 10.0.28.144, mask: 255.255.255.0, gw: 10.0.28.1
+I (3438) OREX_I_MAIN: got ip:10.0.28.144
+I (3438) OREX_I_MAIN: Wi-Fi connected.
+I (3438) OREX_I_MAIN: orex-i Gateway Started with protocols: 0x0A
+I (3448) MAIN_BACNET: Setting BACnet Device Instance to 260001
+I (3448) MAIN_BACNET: Initializing RS485 for BACnet MS/TP...
+I (3458) uart: queue free spaces: 10
+I (3458) DLMSTP: init: Setting default UserData
+I (3458) RS485: Initialized successfully on UART2 (Baud: 38400, TX:13, RX:14, DE/RE:12)
+I (3468) MAIN_BACNET: BACnet MS/TP initialized successfully (MAC: 7)
+I (3478) MAIN_BACNET: Waiting for Wi-Fi connection before initializing BACnet/IP...
+I (3488) bip: BIP initialized on sta, IP: 10.0.28.144, Port: 47808
+I (3488) BACnetPort: MS/TP Port Configured:
+I (3498) BACnetPort:   MAC Address: 7
+I (3498) BACnetPort:   Max Master: 10
+I (3498) BACnetPort:   Max Info Frames: 0
+I (3508) BACnetPort:   Baud Rate: 38400
+I (3508) MAIN_BACNET: BACnet Port initialized
+I (3508) MAIN_BACNET: === BACnet Object List ===
+I (3518) MAIN_BACNET:   [1] Type=8 Instance=260001
+I (3518) MAIN_BACNET:   [2] Type=56 Instance=1
+I (3528) MAIN_BACNET: ===========================
+I (3528) EHIF: Registering refined BACnet discovery & EHIF callbacks
+I (3538) DATALINK: Sent PDU via BIP: Res=12 MacLen=0
+I (3538) DATALINK: Sent PDU via MSTP: Res=8 MacLen=0
+I (3548) DATALINK: Sent PDU via BIP: Res=25 MacLen=0
+I (3548) DATALINK: Sent PDU via MSTP: Res=21 MacLen=0
+I (3558) MAIN_BACNET: BACnet Stack initialized
+I (3558) DATALINK: Sent PDU via BIP: Res=25 MacLen=0
+I (3558) DATALINK: Sent PDU via MSTP: Res=21 MacLen=0
+I (3568) DATALINK: Sent PDU via BIP: Res=8 MacLen=0
+I (3568) DATALINK: Sent PDU via MSTP: Res=4 MacLen=0
+I (3588) EHIF: RX Task Started
+I (3588) EHIF: EHIF Bridge Initialized on UART1 (TX:2, RX:15) @ 115200 baud
+I (3588) OREX_I_MAIN: Running EHIF tests.
+W (3588) OREX_I_MAIN: Wi-Fi connected. EHIF Unit Tests disabled (CONFIG_OREX_I_UNIT_TEST=n).
+I (3598) OREX_I_MAIN: System Heap Info:
+I (3598) OREX_I_MAIN:   Total Free Heap: 4313800 bytes
+I (3608) OREX_I_MAIN:   Internal Free:   147695 bytes
+I (3608) OREX_I_MAIN:   SPIRAM Free:     4186128 bytes
+I (3618) main_task: Returned from app_main()

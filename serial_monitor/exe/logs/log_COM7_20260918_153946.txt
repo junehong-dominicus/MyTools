@@ -1,0 +1,61 @@
+
+
+BL: Starting...
+BL: Jumping to application at Slot A.
+Faro-i STM32 FW: v1.0.0-Sep 18 2026 12:01:12 (bare-metal)
+uart_task_init
+modem_init
+EHIF: Started DMA RX on Port 0
+EHIF: Started DMA RX on Port 1
+ehif_init
+
+Debug CLI Started. Type 'help' for commands.
+> debug_cli_init
+EHIF Poll Started (DMA Mode)
+Config: Loaded from flash (MQTT 192.168.1.143:1883)
+Modem: Starting Routing Scan (GPIO2->STM32RX, GPIO4->STM32TX)...
+Modem: Waiting for boot signal (ready)...
+Modem: Net state (URC) -> CONNECTED
+Modem: Network URC: +ETH_GOT_IP:192.168.1.157
+Modem: Wait_Modem_Response Timeout. Accumulated: ''
+Modem: Trying 921600 (NVS), Swap=0...
+Modem: ALIVE at 921600 (NVS), Swap=0!
+Modem: Firmware Version Info:
+AT version:4.2.0.0-dev(s-ae87b55 - ESP32 - Mar  3 2026 09:05:26)
+SDK version:v5.4.1-643-g8ad0d3d8f2-dirty
+compile time(d432111):Jun 26 2026 14:31:31
+Bin version:v4.2.0.0-dev(WROOM-32)
+
+OK
+
+Modem: Initializing Web Server on port 8000...
+Modem: Web Server started on port 8000
+Modem: Fetching MAC address (Attempt 1)...
+Modem: MAC retrieved. New Topic Root: faro-i/441d64cda7a3
+Modem: SoftAP configured: SSID=Faro-i-cda7a3 ch=1
+Modem: Station/Ethernet connected. Bypassing WiFi join.
+Modem: Connecting to MQTT 192.168.1.143:1883...
+Modem: MQTT Clean warning (may be first connection)
+Modem: Using Client ID: faro-i/441d64cda7a3
+Modem: Wait_Modem_Response Timeout. Accumulated: '+MQTTDISCONNECTED:0
+'
+Modem: MQTT Connect Command Failed
+Modem: URC - MQTT DISCONNECT detected
+Modem: MQTT connect failed (1)
+Modem: Connecting to MQTT 192.168.1.143:1883...
+Modem: Using Client ID: faro-i/441d64cda7a3
+Modem: Wait_Modem_Response Timeout. Accumulated: '+MQTTDISCONNECTED:0
+'
+Modem: MQTT Connect Command Failed
+Modem: URC - MQTT DISCONNECT detected
+Modem: ESP-AT busy, retrying in 1s...
+Modem: MQTT connect failed (2)
+Modem: Connecting to MQTT 192.168.1.143:1883...
+Modem: Using Client ID: faro-i/441d64cda7a3
+Modem: Wait_Modem_Response Timeout. Accumulated: '+MQTTDISCONNECTED:0
+'
+Modem: MQTT Connect Command Failed
+Modem: URC - MQTT DISCONNECT detected
+Modem: ESP-AT busy, retrying in 1s...
+Modem: MQTT connect failed (3)
+Modem: MQTT failed 3 times — suspended. Update MQTT config to retry.

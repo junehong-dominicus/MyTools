@@ -7,8 +7,8 @@ A field technician's Embedded System / Embedded System debug tool: a multi-port 
 migrated from `serial_monitor_v2`), plus network discovery behind a
 **Scan** button.
 
-Standalone: vendors its own copy of the shared `common/` theme package, so it has no
-dependency on any other repo's directory layout.
+Standalone: lives in `serial_monitor/` and vendors its own copy of the shared `common/`
+theme package, so it builds independently of the Shell Multiplexer.
 
 ### Features
 - **Resizable multi-port serial layout**: Drag and drop proportions between ports (1-4, default 1).
@@ -23,12 +23,13 @@ dependency on any other repo's directory layout.
 
 ### Prerequisites
 - Python 3.10+
-- `pip install PySide6 pyserial psutil scapy zeroconf requests` (or `uv sync`, using `pyproject.toml`)
+- From `serial_monitor/`: `uv sync` (installs `PySide6`, `pyserial`, `psutil`, `scapy`, `zeroconf`, `requests`)
 - **Windows Administrative Privileges** are required for the ARP portion of Scan (scapy). Without
   elevation, Scan still finds devices via mDNS and HTTP probing, just not raw ARP replies.
 
 ### How to Run
 ```powershell
+cd serial_monitor
 python main.py
 ```
 
@@ -36,12 +37,13 @@ python main.py
 To generate a standalone Windows executable (built with `uac_admin=True`, so Windows will
 prompt for elevation on launch — needed for the ARP scan):
 ```powershell
+cd serial_monitor
 python build_exe.py
 
 # Or via PyInstaller directly
 python -m PyInstaller MyTools.spec --noconfirm
 ```
-Results will appear in the `dist/` folder, then get copied to `exe/MyTools.exe`.
+Results appear in `serial_monitor/dist/`, then get copied to `serial_monitor/exe/MyTools.exe`.
 
 ## Shell Multiplexer
 

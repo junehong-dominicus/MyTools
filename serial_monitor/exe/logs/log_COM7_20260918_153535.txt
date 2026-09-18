@@ -1,0 +1,10 @@
+Modem: Fetching MAC address (Attempt 1)...
+Modem: Net state (URC) -> CONNECTED
+Modem: Network URC: +ETH_GOT_IP:192.168.1.157
+Modem: MAC retrieved. New Topic Root: faro-i/441d64cda7a3
+Modem: SoftAP configured: SSID=Faro-i-cda7a3 ch=1
+Modem: Station/Ethernet connected. Bypassing WiFi join.
+Modem: Connecting to MQTT 192.168.1.143:1883...
+Modem: MQTT Clean warning (may be first connection)
+Modem: Using Client ID: faro-i/441d64cda7a3
+Modem: U�
