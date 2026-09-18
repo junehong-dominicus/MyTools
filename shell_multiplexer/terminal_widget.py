@@ -151,6 +151,9 @@ class TerminalWidget(QWidget):
         # happened.
         if not shiboken6.isValid(self) or self.screen is None:
             return
+        self._apply_size_from_geometry()
+
+    def _apply_size_from_geometry(self) -> None:
         cell_w, cell_h = self._cell_size()
         cols, rows = compute_grid_size(self.width(), self.height(), cell_w, cell_h)
         self._visible_cols, self._visible_rows = cols, rows
@@ -173,6 +176,17 @@ class TerminalWidget(QWidget):
         # for correct wrapping, progress bars, $Host.UI.RawUI.WindowSize,
         # tab-completion menu placement, etc.
         self.backend.resize(cols, rows)
+
+    def set_font_size(self, size: int) -> None:
+        # Changing the font changes cell metrics, so the same pixel area
+        # now fits a different number of columns/rows -- recompute and
+        # apply immediately (not debounced: this is a single deliberate
+        # user action, not layout churn from a splitter rebuild).
+        self._font = QFont("Consolas", size)
+        self._metrics = QFontMetrics(self._font)
+        if self.screen is not None:
+            self._apply_size_from_geometry()
+        self.update()
 
     def _on_output(self, text: str) -> None:
         if self.screen:

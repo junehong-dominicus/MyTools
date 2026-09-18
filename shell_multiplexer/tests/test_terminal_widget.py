@@ -99,6 +99,44 @@ def test_widget_renders_fed_screen_without_error(qapp):
     assert pixmap.height() == 300
 
 
+def test_set_font_size_before_start_just_changes_the_font(qapp):
+    # No screen yet (start() hasn't been called) -- there's nothing to
+    # resize, but the new font must still take effect for whenever start()
+    # does run.
+    widget = TerminalWidget()
+    before = widget._cell_size()
+
+    widget.set_font_size(18)
+
+    assert widget._font.pointSize() == 18
+    assert widget._cell_size() != before
+    assert widget.screen is None
+
+
+def test_set_font_size_after_start_recomputes_visible_size(qapp, tmp_path, monkeypatch):
+    resize_calls = []
+    monkeypatch.setattr(PtyBackend, "spawn", lambda self, cwd, columns=80, lines=24: None)
+    monkeypatch.setattr(PtyBackend, "resize", lambda self, columns, lines: resize_calls.append((columns, lines)))
+
+    widget = TerminalWidget()
+    widget.resize(800, 600)
+    widget.start(str(tmp_path))
+    resize_calls.clear()
+
+    widget.set_font_size(18)
+
+    # A bigger font means fewer, bigger cells fit in the same pixel area --
+    # applied immediately, not debounced (this is a deliberate one-off
+    # action, not layout churn).
+    cell_w, cell_h = widget._cell_size()
+    expected = compute_grid_size(800, 600, cell_w, cell_h)
+    assert resize_calls == [expected]
+    assert (widget._visible_cols, widget._visible_rows) == expected
+
+    widget._repaint_timer.stop()
+    widget._blink_timer.stop()
+
+
 def test_tab_and_shift_tab_reach_key_press_event_instead_of_stealing_focus(qapp):
     # Regression test: by default, Qt intercepts Tab/Shift+Tab for keyboard
     # focus traversal before they ever reach keyPressEvent, unless a widget

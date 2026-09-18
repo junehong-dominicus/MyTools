@@ -12,7 +12,7 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from common.ui_theme import apply_industrial_theme
 
 from layout import LAYOUT_MODES, compute_grid_rows
-from settings import CONFIG_FILENAME, DEFAULT_LAYOUT_MODE, load_settings_file, save_settings_file
+from settings import CONFIG_FILENAME, DEFAULT_FONT_SIZE, DEFAULT_LAYOUT_MODE, FONT_SIZES, load_settings_file, save_settings_file
 from shell_pane import ShellPane
 
 if sys.platform == 'win32':
@@ -30,6 +30,7 @@ class MainWindow(QMainWindow):
 
         self.panes: list[ShellPane] = []
         self.current_mode = DEFAULT_LAYOUT_MODE
+        self.current_font_size = DEFAULT_FONT_SIZE
         self.pane_area_layout = None
 
         central = QWidget()
@@ -37,12 +38,12 @@ class MainWindow(QMainWindow):
         outer_layout = QVBoxLayout(central)
 
         toolbar = QFrame()
-        toolbar.setFixedHeight(24)
+        toolbar.setFixedHeight(20)
         t_layout = QHBoxLayout(toolbar)
         t_layout.setContentsMargins(10, 0, 10, 0)
 
         title = QLabel("MYTOOLS — SHELL MULTIPLEXER")
-        title.setStyleSheet("color: #3498DB; font-size: 13px; font-weight: bold;")
+        title.setStyleSheet("color: #3498DB; font-size: 12px; font-weight: bold;")
         t_layout.addWidget(title)
         t_layout.addStretch()
 
@@ -50,12 +51,20 @@ class MainWindow(QMainWindow):
         self.shell_count_combo = QComboBox()
         self.shell_count_combo.addItems(LAYOUT_MODES)
         self.shell_count_combo.setFixedWidth(70)
-        self.shell_count_combo.setFixedHeight(20)
+        self.shell_count_combo.setFixedHeight(16)
         self.shell_count_combo.setStyleSheet("padding: 0px 4px;")
         t_layout.addWidget(self.shell_count_combo)
 
+        t_layout.addWidget(QLabel("FONT SIZE:"))
+        self.font_size_combo = QComboBox()
+        self.font_size_combo.addItems([str(s) for s in FONT_SIZES])
+        self.font_size_combo.setFixedWidth(55)
+        self.font_size_combo.setFixedHeight(16)
+        self.font_size_combo.setStyleSheet("padding: 0px 4px;")
+        t_layout.addWidget(self.font_size_combo)
+
         save_btn = QPushButton("Save Settings")
-        save_btn.setFixedHeight(20)
+        save_btn.setFixedHeight(16)
         save_btn.setStyleSheet("padding: 0px 10px;")
         save_btn.clicked.connect(self.save_settings)
         t_layout.addWidget(save_btn)
@@ -67,11 +76,18 @@ class MainWindow(QMainWindow):
         self.pane_area_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(self.pane_area)
 
-        initial_mode, initial_paths = load_settings_file(self.config_path)
+        initial_mode, initial_paths, initial_font_size = load_settings_file(self.config_path)
+        self.current_font_size = initial_font_size
+
         self.shell_count_combo.blockSignals(True)
         self.shell_count_combo.setCurrentText(initial_mode)
         self.shell_count_combo.blockSignals(False)
         self.shell_count_combo.currentTextChanged.connect(self._on_shell_count_changed)
+
+        self.font_size_combo.blockSignals(True)
+        self.font_size_combo.setCurrentText(str(initial_font_size))
+        self.font_size_combo.blockSignals(False)
+        self.font_size_combo.currentTextChanged.connect(self._on_font_size_changed)
 
         self.build_panes(initial_mode, initial_paths)
 
@@ -110,6 +126,7 @@ class MainWindow(QMainWindow):
     def _make_pane(self, pane_id: int, prior_paths: dict[int, str]) -> ShellPane:
         path = prior_paths.get(pane_id, os.path.expanduser("~"))
         pane = ShellPane(pane_id, path)
+        pane.terminal.set_font_size(self.current_font_size)
         self.panes.append(pane)
         pane.start_shell()
         return pane
@@ -117,9 +134,14 @@ class MainWindow(QMainWindow):
     def _on_shell_count_changed(self, text: str) -> None:
         self.build_panes(text)
 
+    def _on_font_size_changed(self, text: str) -> None:
+        self.current_font_size = int(text)
+        for pane in self.panes:
+            pane.terminal.set_font_size(self.current_font_size)
+
     def save_settings(self) -> None:
         pane_paths = {p.pane_id: p.path_edit.text() for p in self.panes}
-        save_settings_file(self.config_path, self.current_mode, pane_paths)
+        save_settings_file(self.config_path, self.current_mode, pane_paths, self.current_font_size)
 
     def closeEvent(self, event) -> None:
         for pane in self.panes:
