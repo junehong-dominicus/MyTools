@@ -37,12 +37,12 @@ class MainWindow(QMainWindow):
         outer_layout = QVBoxLayout(central)
 
         toolbar = QFrame()
-        toolbar.setFixedHeight(36)
+        toolbar.setFixedHeight(24)
         t_layout = QHBoxLayout(toolbar)
         t_layout.setContentsMargins(10, 0, 10, 0)
 
         title = QLabel("MYTOOLS — SHELL MULTIPLEXER")
-        title.setStyleSheet("color: #3498DB; font-size: 18px; font-weight: bold;")
+        title.setStyleSheet("color: #3498DB; font-size: 13px; font-weight: bold;")
         t_layout.addWidget(title)
         t_layout.addStretch()
 
@@ -50,9 +50,13 @@ class MainWindow(QMainWindow):
         self.shell_count_combo = QComboBox()
         self.shell_count_combo.addItems(LAYOUT_MODES)
         self.shell_count_combo.setFixedWidth(70)
+        self.shell_count_combo.setFixedHeight(20)
+        self.shell_count_combo.setStyleSheet("padding: 0px 4px;")
         t_layout.addWidget(self.shell_count_combo)
 
         save_btn = QPushButton("Save Settings")
+        save_btn.setFixedHeight(20)
+        save_btn.setStyleSheet("padding: 0px 10px;")
         save_btn.clicked.connect(self.save_settings)
         t_layout.addWidget(save_btn)
 
