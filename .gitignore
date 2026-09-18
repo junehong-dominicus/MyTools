@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MyTools runtime output -- generated at run/build time, not committed
+/exe/logs/
+serial_config_v2.json
+shell_config.json
+
+# Claude Code tool state (worktrees, session/scheduling state, etc.)
+.claude/
