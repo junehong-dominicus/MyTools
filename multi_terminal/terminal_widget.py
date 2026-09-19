@@ -1,6 +1,6 @@
 import shiboken6
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QPainter
 from PySide6.QtWidgets import QWidget
 
 from input_translator import translate_key_event
@@ -231,6 +231,26 @@ class TerminalWidget(QWidget):
         super().resizeEvent(event)
 
     def keyPressEvent(self, event) -> None:
+        # Cmd+V. Checked explicitly (Qt.MetaModifier -- Cmd is reported that
+        # way, see main.py's AA_MacDontSwapCtrlAndMeta) rather than via
+        # event.matches(QKeySequence.Paste): the latter resolves through
+        # QPlatformTheme's per-OS standard-key table, which under the
+        # "offscreen" QPA platform (used for headless tests) doesn't know
+        # it's "supposed to be macOS" and answers Ctrl+V instead -- an
+        # explicit check matches this app's own Cmd/Ctrl contract exactly,
+        # in tests and the real app alike. Without either path, a Cmd-held
+        # key press never reaches translate_key_event's Ctrl+<letter>
+        # handling and reports empty event.text() (same as any other
+        # OS-level shortcut), so paste needs its own path regardless.
+        if event.key() == Qt.Key_V and event.modifiers() & Qt.MetaModifier:
+            clipboard_text = QGuiApplication.clipboard().text()
+            if clipboard_text:
+                # A real Enter key sends "\r" (see _SIMPLE_KEYS below), not
+                # "\n" -- translate a multi-line paste the same way so each
+                # line actually submits instead of just inserting a newline.
+                self.backend.write(clipboard_text.replace("\r\n", "\r").replace("\n", "\r"))
+            return
+
         text = translate_key_event(event)
         if text == "\r" and self.screen is not None:
             # Known limitation: only the cursor's current visual row is

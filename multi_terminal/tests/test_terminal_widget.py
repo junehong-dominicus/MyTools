@@ -2,7 +2,7 @@ import sys
 
 import shiboken6
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
@@ -469,4 +469,66 @@ def test_new_output_stays_visible_once_it_exceeds_the_shrunk_row_count(qapp, tmp
     assert any(last_line in row for row in rendered_rows)
 
     widget._repaint_timer.stop()
+    widget._blink_timer.stop()
+
+
+def test_cmd_v_pastes_clipboard_text_to_backend(qapp, monkeypatch):
+    # Regression test: Cmd+V on macOS arrives as Qt.MetaModifier (see
+    # main.py's AA_MacDontSwapCtrlAndMeta), which translate_key_event never
+    # handles -- and a Cmd-held key press reports empty event.text(), so
+    # without a dedicated path, paste silently did nothing.
+    writes = []
+    widget = TerminalWidget()
+    monkeypatch.setattr(widget.backend, "write", lambda text: writes.append(text))
+    QGuiApplication.clipboard().setText("echo pasted")
+
+    QTest.keyClick(widget, Qt.Key_V, Qt.MetaModifier)
+
+    assert writes == ["echo pasted"]
+
+    widget._blink_timer.stop()
+
+
+def test_paste_translates_newlines_to_carriage_returns(qapp, monkeypatch):
+    # A real Enter key sends "\r" (_SIMPLE_KEYS), not "\n" -- a pasted
+    # multi-line command block must submit each line the same way, not just
+    # insert a newline the shell doesn't treat as Enter.
+    writes = []
+    widget = TerminalWidget()
+    monkeypatch.setattr(widget.backend, "write", lambda text: writes.append(text))
+    QGuiApplication.clipboard().setText("echo one\necho two\r\necho three")
+
+    QTest.keyClick(widget, Qt.Key_V, Qt.MetaModifier)
+
+    assert writes == ["echo one\recho two\recho three"]
+
+    widget._blink_timer.stop()
+
+
+def test_paste_with_empty_clipboard_does_not_write(qapp, monkeypatch):
+    writes = []
+    widget = TerminalWidget()
+    monkeypatch.setattr(widget.backend, "write", lambda text: writes.append(text))
+    QGuiApplication.clipboard().setText("")
+
+    QTest.keyClick(widget, Qt.Key_V, Qt.MetaModifier)
+
+    assert writes == []
+
+    widget._blink_timer.stop()
+
+
+def test_ctrl_v_does_not_trigger_paste(qapp, monkeypatch):
+    # Only Cmd (MetaModifier) triggers paste -- Ctrl+V is a normal
+    # Ctrl+<letter> control character (0x16) like any other, not a paste
+    # shortcut, on this macOS-only app.
+    writes = []
+    widget = TerminalWidget()
+    monkeypatch.setattr(widget.backend, "write", lambda text: writes.append(text))
+    QGuiApplication.clipboard().setText("should not be pasted")
+
+    QTest.keyClick(widget, Qt.Key_V, Qt.ControlModifier)
+
+    assert writes == ["\x16"]
+
     widget._blink_timer.stop()
