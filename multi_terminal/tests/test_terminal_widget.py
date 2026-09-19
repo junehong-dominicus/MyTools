@@ -1,7 +1,7 @@
 import sys
 
 import shiboken6
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
@@ -530,5 +530,158 @@ def test_ctrl_v_does_not_trigger_paste(qapp, monkeypatch):
     QTest.keyClick(widget, Qt.Key_V, Qt.ControlModifier)
 
     assert writes == ["\x16"]
+
+    widget._blink_timer.stop()
+
+
+def _cell_point(widget, col, row):
+    cell_w, cell_h = widget._cell_size()
+    return QPoint(col * cell_w + 1, row * cell_h + 1)
+
+
+def test_plain_click_with_no_drag_selects_nothing(qapp):
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.screen.feed("hello world")
+
+    QTest.mousePress(widget, Qt.LeftButton, pos=_cell_point(widget, 3, 0))
+    QTest.mouseRelease(widget, Qt.LeftButton, pos=_cell_point(widget, 3, 0))
+
+    assert widget.selected_text() == ""
+
+    widget._blink_timer.stop()
+
+
+def test_drag_selects_text_within_a_single_row(qapp):
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.screen.feed("hello world")
+
+    QTest.mousePress(widget, Qt.LeftButton, pos=_cell_point(widget, 0, 0))
+    QTest.mouseMove(widget, pos=_cell_point(widget, 4, 0))
+    QTest.mouseRelease(widget, Qt.LeftButton, pos=_cell_point(widget, 4, 0))
+
+    assert widget.selected_text() == "hello"
+
+    widget._blink_timer.stop()
+
+
+def test_drag_backwards_normalizes_to_reading_order(qapp):
+    # Dragging from a later cell to an earlier one must still select the
+    # text in reading order, not come out reversed/garbled.
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.screen.feed("hello world")
+
+    QTest.mousePress(widget, Qt.LeftButton, pos=_cell_point(widget, 4, 0))
+    QTest.mouseMove(widget, pos=_cell_point(widget, 0, 0))
+    QTest.mouseRelease(widget, Qt.LeftButton, pos=_cell_point(widget, 0, 0))
+
+    assert widget.selected_text() == "hello"
+
+    widget._blink_timer.stop()
+
+
+def test_drag_across_multiple_rows_selects_full_middle_rows(qapp):
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.screen.feed("first line\r\nsecond line\r\nthird line")
+
+    QTest.mousePress(widget, Qt.LeftButton, pos=_cell_point(widget, 6, 0))  # mid "first line"
+    QTest.mouseMove(widget, pos=_cell_point(widget, 5, 2))  # mid "third line"
+    QTest.mouseRelease(widget, Qt.LeftButton, pos=_cell_point(widget, 5, 2))
+
+    assert widget.selected_text() == "line\nsecond line\nthird"
+
+    widget._blink_timer.stop()
+
+
+def test_new_mouse_press_clears_previous_selection(qapp):
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.screen.feed("hello world")
+    QTest.mousePress(widget, Qt.LeftButton, pos=_cell_point(widget, 0, 0))
+    QTest.mouseMove(widget, pos=_cell_point(widget, 4, 0))
+    QTest.mouseRelease(widget, Qt.LeftButton, pos=_cell_point(widget, 4, 0))
+    assert widget.selected_text() == "hello"
+
+    QTest.mousePress(widget, Qt.LeftButton, pos=_cell_point(widget, 8, 0))
+    QTest.mouseRelease(widget, Qt.LeftButton, pos=_cell_point(widget, 8, 0))
+
+    assert widget.selected_text() == ""
+
+    widget._blink_timer.stop()
+
+
+def test_cmd_c_copies_selected_text_to_clipboard(qapp):
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.screen.feed("hello world")
+    QTest.mousePress(widget, Qt.LeftButton, pos=_cell_point(widget, 0, 0))
+    QTest.mouseMove(widget, pos=_cell_point(widget, 4, 0))
+    QTest.mouseRelease(widget, Qt.LeftButton, pos=_cell_point(widget, 4, 0))
+    QGuiApplication.clipboard().setText("unchanged")
+
+    QTest.keyClick(widget, Qt.Key_C, Qt.MetaModifier)
+
+    assert QGuiApplication.clipboard().text() == "hello"
+
+    widget._blink_timer.stop()
+
+
+def test_cmd_c_with_no_selection_does_not_touch_clipboard_or_write(qapp, monkeypatch):
+    writes = []
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    monkeypatch.setattr(widget.backend, "write", lambda text: writes.append(text))
+    QGuiApplication.clipboard().setText("unchanged")
+
+    QTest.keyClick(widget, Qt.Key_C, Qt.MetaModifier)
+
+    assert QGuiApplication.clipboard().text() == "unchanged"
+    assert writes == []
+
+    widget._blink_timer.stop()
+
+
+def test_selected_cells_are_painted_with_a_visible_overlay(qapp):
+    # Deterministic paintEvent check, complementing the interaction tests
+    # above: a selected cell's rendered pixel color must actually differ
+    # from the same cell unselected, confirming the overlay really draws
+    # (not just that the selection *model* updates correctly).
+    widget = TerminalWidget()
+    widget.resize(400, 300)
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.screen.feed("hello world")
+    cell_w, cell_h = widget._cell_size()
+    probe = (2 * cell_w + 2, cell_h // 2)  # inside the "l" of "hello", row 0
+
+    before = widget.grab().toImage().pixelColor(*probe)
+    QTest.mousePress(widget, Qt.LeftButton, pos=_cell_point(widget, 0, 0))
+    QTest.mouseMove(widget, pos=_cell_point(widget, 4, 0))
+    QTest.mouseRelease(widget, Qt.LeftButton, pos=_cell_point(widget, 4, 0))
+    after = widget.grab().toImage().pixelColor(*probe)
+
+    assert before != after
+
+    widget._blink_timer.stop()
+
+
+def test_ctrl_c_still_sends_sigint_byte_with_an_active_selection(qapp, monkeypatch):
+    # Regression guard: Cmd+C (copy) and Ctrl+C (SIGINT) must stay
+    # completely independent -- a leftover mouse selection must never
+    # hijack the interrupt keystroke.
+    writes = []
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=40, lines=15)
+    widget.screen.feed("hello world")
+    monkeypatch.setattr(widget.backend, "write", lambda text: writes.append(text))
+    QTest.mousePress(widget, Qt.LeftButton, pos=_cell_point(widget, 0, 0))
+    QTest.mouseMove(widget, pos=_cell_point(widget, 4, 0))
+    QTest.mouseRelease(widget, Qt.LeftButton, pos=_cell_point(widget, 4, 0))
+
+    QTest.keyClick(widget, Qt.Key_C, Qt.ControlModifier)
+
+    assert writes == ["\x03"]
 
     widget._blink_timer.stop()

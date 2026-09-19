@@ -21,6 +21,11 @@ ANSI_BRIGHT_COLORS = {
 
 DEFAULT_FG = "#d4d4d4"
 DEFAULT_BG = "#1e1e1e"
+# Translucent overlay (not a flat fill) so a selected cell's own fg/bg still
+# show through underneath -- same technique already used for the cursor
+# below, just a different tint (the app's accent blue) so the two are never
+# confused for one another.
+SELECTION_OVERLAY = QColor(52, 152, 219, 90)
 
 # How long to wait for widget geometry to stop changing before actually
 # resizing the terminal. Building a multi-pane layout (e.g. switching SHELL
@@ -124,6 +129,16 @@ class TerminalWidget(QWidget):
         self._resize_debounce_timer.setInterval(_RESIZE_DEBOUNCE_MS)
         self._resize_debounce_timer.timeout.connect(self._sync_size_to_widget)
 
+        # Mouse drag-to-select. Both are (col, row) in *buffer* coordinates
+        # (see compute_visible_window -- not necessarily the same as the
+        # widget's currently-visible row/col, since the buffer only ever
+        # grows). None means no selection has been started yet; start ==
+        # end means a plain click with no drag, which paints/copies as
+        # empty (see _normalized_selection).
+        self._selection_start: tuple[int, int] | None = None
+        self._selection_end: tuple[int, int] | None = None
+        self._selecting = False
+
         self.setFocusPolicy(Qt.StrongFocus)
 
     def _cell_size(self) -> tuple[int, int]:
@@ -194,6 +209,83 @@ class TerminalWidget(QWidget):
             self._apply_size_from_geometry()
         self.update()
 
+    def _cell_at(self, pos) -> tuple[int, int] | None:
+        """Map a widget-local pixel position to (col, row) in *buffer*
+        coordinates (see compute_visible_window), clamped to whatever is
+        currently rendered. None if there's nothing to select yet."""
+        if self.screen is None:
+            return None
+        cell_w, cell_h = self._cell_size()
+        top_row, rows_to_render, visible_cols = compute_visible_window(
+            self.screen.lines, self.screen.columns, self._visible_rows, self._visible_cols,
+            cursor_row=self.screen.cursor.y,
+        )
+        col = max(0, min(visible_cols - 1, int(pos.x() // cell_w)))
+        row = top_row + max(0, min(rows_to_render - 1, int(pos.y() // cell_h)))
+        return col, row
+
+    def _normalized_selection(self) -> tuple[tuple[int, int], tuple[int, int]] | None:
+        """(start, end) in reading order (top-to-bottom, left-to-right), or
+        None if nothing is actually selected -- either no drag has happened
+        yet, or start == end (a plain click, not a drag)."""
+        start, end = self._selection_start, self._selection_end
+        if start is None or end is None or start == end:
+            return None
+        # Compare (row, col), not (col, row): a selection spanning rows
+        # must order by row first regardless of which column either point
+        # landed on.
+        return (start, end) if (start[1], start[0]) <= (end[1], end[0]) else (end, start)
+
+    def _cell_is_selected(self, x: int, y: int, selection) -> bool:
+        (sx, sy), (ex, ey) = selection
+        if y < sy or y > ey:
+            return False
+        if sy == ey:
+            return sx <= x <= ex
+        if y == sy:
+            return x >= sx
+        if y == ey:
+            return x <= ex
+        return True  # a fully-enclosed row in the middle of a multi-row selection
+
+    def selected_text(self) -> str:
+        selection = self._normalized_selection()
+        if selection is None or self.screen is None:
+            return ""
+        (sx, sy), (ex, ey) = selection
+        lines = []
+        for y in range(sy, ey + 1):
+            col_start = sx if y == sy else 0
+            col_end = ex if y == ey else self.screen.columns - 1
+            line = "".join(self.screen.get_cell(x, y).data for x in range(col_start, col_end + 1))
+            lines.append(line.rstrip())
+        return "\n".join(lines)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton:
+            cell = self._cell_at(event.position())
+            # Both ends start at the same cell -- a plain click with no
+            # drag stays a "no selection" (see _normalized_selection), and
+            # dragging from here grows a real one.
+            self._selection_start = cell
+            self._selection_end = cell
+            self._selecting = cell is not None
+            self.update()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._selecting:
+            cell = self._cell_at(event.position())
+            if cell is not None:
+                self._selection_end = cell
+                self.update()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton:
+            self._selecting = False
+        super().mouseReleaseEvent(event)
+
     def get_history(self) -> list[str]:
         return list(self._history)
 
@@ -251,6 +343,19 @@ class TerminalWidget(QWidget):
                 self.backend.write(clipboard_text.replace("\r\n", "\r").replace("\n", "\r"))
             return
 
+        # Cmd+C. Ctrl+C (SIGINT) is untouched -- that's the ordinary
+        # Ctrl+<letter> path below (modifiers & Qt.ControlModifier), a
+        # completely different key given AA_MacDontSwapCtrlAndMeta. Cmd+C
+        # with no active selection intentionally does nothing (matching
+        # Terminal.app/iTerm2) rather than falling through to
+        # translate_key_event -- Cmd-held key presses report empty
+        # event.text() anyway, so there'd be nothing to send regardless.
+        if event.key() == Qt.Key_C and event.modifiers() & Qt.MetaModifier:
+            selected = self.selected_text()
+            if selected:
+                QGuiApplication.clipboard().setText(selected)
+            return
+
         text = translate_key_event(event)
         if text == "\r" and self.screen is not None:
             # Known limitation: only the cursor's current visual row is
@@ -295,6 +400,7 @@ class TerminalWidget(QWidget):
             self.screen.lines, self.screen.columns, self._visible_rows, self._visible_cols,
             cursor_row=self.screen.cursor.y,
         )
+        selection = self._normalized_selection()
 
         for y in range(top_row, top_row + rows_to_render):
             screen_y = y - top_row
@@ -308,6 +414,8 @@ class TerminalWidget(QWidget):
                 if cell.data != " ":
                     painter.setPen(resolve_color(fg, cell.bold, is_fg=True))
                     painter.drawText(x * cell_w, screen_y * cell_h + ascent, cell.data)
+                if selection is not None and self._cell_is_selected(x, y, selection):
+                    painter.fillRect(x * cell_w, screen_y * cell_h, cell_w, cell_h, SELECTION_OVERLAY)
 
         cursor = self.screen.cursor
         if not cursor.hidden and self._cursor_visible and cursor.y >= top_row and cursor.x < visible_cols:
