@@ -33,10 +33,15 @@ cd serial_monitor
 python main.py
 ```
 
-### How to Build (EXE)
-To generate a standalone Windows executable (built with `uac_admin=True`, so Windows will
-prompt for elevation on launch — needed for the ARP scan):
+### How to Build
+`MyTools.spec` is a single cross-platform PyInstaller spec: it builds whatever OS it's run
+on, branching on `sys.platform` for the platform-specific bits (Windows gets
+`uac_admin=True` so it prompts for elevation on launch, needed for the ARP scan; macOS
+gets a `.app` bundle with no UAC equivalent — ARP scanning there instead requires running
+the app with `sudo`, or granting it packet-capture permission).
+
 ```powershell
+# Windows
 cd serial_monitor
 python build_exe.py
 
@@ -44,6 +49,15 @@ python build_exe.py
 python -m PyInstaller MyTools.spec --noconfirm
 ```
 Results appear in `serial_monitor/dist/`, then get copied to `serial_monitor/exe/MyTools.exe`.
+
+```bash
+# macOS
+cd serial_monitor
+uv sync
+uv run python build_exe.py
+```
+Results appear in `serial_monitor/dist/MyTools.app`, then get copied to
+`serial_monitor/exe/MyTools.app` (not committed — see `.gitignore`; rebuild locally).
 
 ## Shell Multiplexer
 
@@ -72,3 +86,42 @@ python build_exe.py
 ```
 Results appear in `shell_multiplexer/dist/`, then get copied to
 `shell_multiplexer/exe/ShellMultiplexer.exe`.
+
+Windows-only, by design. The pane backend (`pty_backend.py`) is built
+directly on `pywinpty`/ConPTY and spawns `powershell.exe`, so a macOS build
+isn't just a new PyInstaller spec — see **MultiTerminal** below, a separate
+macOS-native sibling built on this one's design (same panes/layout/settings
+UI, `input_translator.py` unchanged) but with a POSIX-pty backend spawning
+the user's own login shell instead.
+
+## MultiTerminal
+
+MultiTerminal is Shell Multiplexer's design ported to macOS: the same
+resizable 1-4 pane layout, per-pane starting directory, font size, and
+saved/loadable configs — but panes are real POSIX ptys running the user's
+login shell (`$SHELL -il`, so `.zshrc`/`.zprofile` etc. all load, same as a
+normal Terminal.app window) instead of ConPTY + `powershell.exe`.
+
+Standalone: lives in `multi_terminal/` and vendors its own copy of the
+`common/` theme package.
+
+### Prerequisites
+- macOS
+- Python 3.10+
+- From `multi_terminal/`: `uv sync` (installs `PySide6`, `pyte` — no pty
+  library needed, Python's stdlib `pty`/`termios` module covers it)
+
+### How to Run
+```bash
+cd multi_terminal
+uv run python main.py
+```
+
+### How to Build
+```bash
+cd multi_terminal
+uv run python build_exe.py
+```
+Results appear in `multi_terminal/dist/MultiTerminal.app`, then get copied to
+`multi_terminal/exe/MultiTerminal.app` (not committed — see `.gitignore`;
+rebuild locally).

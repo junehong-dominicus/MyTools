@@ -1,0 +1,13 @@
+[project]
+name = "multi-terminal"
+version = "1.0.0"
+description = "Multi-pane native terminal tool for macOS, based on Shell Multiplexer's design but backed by a POSIX pty and the user's login shell instead of ConPTY/PowerShell"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.5",
+    "pyte>=0.8.1",
+    "pyinstaller>=6.5.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]

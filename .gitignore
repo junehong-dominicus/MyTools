@@ -223,5 +223,12 @@ serial_config_v2.json
 shell_config.json
 configs/
 
+# macOS .app bundles are a multi-hundred-MB tree of Qt frameworks, unlike the
+# single-file Windows .exe -- too large to commit, rebuild locally instead
+**/exe/*.app/
+
+# macOS Finder metadata
+.DS_Store
+
 # Claude Code tool state (worktrees, session/scheduling state, etc.)
 .claude/
