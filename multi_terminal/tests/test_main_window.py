@@ -2,6 +2,9 @@ import os
 import sys
 from unittest.mock import patch
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence
+
 import main
 from layout import LAYOUT_MODES
 from main import MainWindow
@@ -401,3 +404,71 @@ def test_default_config_dir_uses_application_support_when_frozen(qapp, monkeypat
         os.path.expanduser("~/Library/Application Support/MultiTerminal"), CONFIG_DIR,
     )
     assert MainWindow.default_config_dir() == expected
+
+
+def test_open_new_window_creates_and_tracks_a_second_window(qapp, monkeypatch, tmp_path):
+    # Regression test: a parentless top-level QMainWindow with no other
+    # Python reference to it is liable to get garbage-collected out from
+    # under its still-visible native window -- open_new_window() must keep
+    # one alive in main._open_windows, not just construct-and-show it.
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    config_dir = str(tmp_path / "configs")
+    first = main.open_new_window(config_dir)
+
+    try:
+        assert first in main._open_windows
+        assert first.isVisible()
+
+        second = main.open_new_window(config_dir)
+        try:
+            assert second is not first
+            assert second in main._open_windows
+            assert len(main._open_windows) == 2
+            # Same config_dir shared across windows (like Terminal.app's
+            # window groups), not each window getting its own isolated set.
+            assert second.config_dir == first.config_dir
+        finally:
+            second.close()
+    finally:
+        first.close()
+
+
+def test_closing_a_window_removes_it_from_open_windows(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = main.open_new_window(str(tmp_path / "configs"))
+
+    assert window in main._open_windows
+    window.close()
+
+    assert window not in main._open_windows
+
+
+def test_file_menu_has_new_window_action_bound_to_cmd_n(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+    main._open_windows.append(window)
+
+    file_menus = [a for a in window.menuBar().actions() if a.menu() is not None and a.menu().title() == "File"]
+    assert len(file_menus) == 1
+    new_window_actions = [a for a in file_menus[0].menu().actions() if a.text() == "New Window"]
+    assert len(new_window_actions) == 1
+    assert new_window_actions[0].shortcut() == QKeySequence(Qt.MetaModifier | Qt.Key_N)
+
+    window.close()
+
+
+def test_triggering_new_window_action_opens_another_window(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+    main._open_windows.append(window)
+    before = len(main._open_windows)
+
+    file_menu = next(a.menu() for a in window.menuBar().actions() if a.menu() and a.menu().title() == "File")
+    new_window_action = next(a for a in file_menu.actions() if a.text() == "New Window")
+    new_window_action.trigger()
+
+    try:
+        assert len(main._open_windows) == before + 1
+    finally:
+        for w in list(main._open_windows):
+            w.close()

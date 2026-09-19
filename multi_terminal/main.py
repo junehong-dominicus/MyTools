@@ -2,7 +2,7 @@ import sys
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog, QLabel, QMainWindow,
     QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget,
@@ -19,6 +19,13 @@ from settings import (
 )
 from shell_pane import ShellPane
 
+# Every open MainWindow, so "New Window" (Cmd+N) can spawn a sibling that
+# stays alive: a parentless top-level QMainWindow with no other Python
+# reference to it is liable to get garbage-collected out from under its
+# still-visible native window. Also lets each window drop itself on close
+# (see closeEvent) instead of accumulating forever.
+_open_windows: list["MainWindow"] = []
+
 
 class MainWindow(QMainWindow):
     def __init__(self, config_dir: str = CONFIG_DIR):
@@ -26,6 +33,7 @@ class MainWindow(QMainWindow):
         self.config_dir = config_dir
         self.setWindowTitle("MyTools — MultiTerminal")
         self.setMinimumSize(1200, 800)
+        self._build_menu_bar()
 
         self.panes: list[ShellPane] = []
         # Persists per-pane history across build_panes() rebuilds (e.g.
@@ -292,10 +300,57 @@ class MainWindow(QMainWindow):
         if name:
             self._load_config(name)
 
+    def _build_menu_bar(self) -> None:
+        file_menu = self.menuBar().addMenu("File")
+        new_window_action = QAction("New Window", self)
+        # Set explicitly (Qt.MetaModifier -- Cmd is reported that way, see
+        # main()'s AA_MacDontSwapCtrlAndMeta) rather than via
+        # QKeySequence.New: that standard key resolves through
+        # QPlatformTheme's per-OS table, which under the "offscreen" QPA
+        # platform (used for headless tests) doesn't know it's "supposed to
+        # be macOS" and answers Ctrl+N instead -- same pitfall already
+        # worked around for Cmd+V/Cmd+C in terminal_widget.py.
+        new_window_action.setShortcut(QKeySequence(Qt.MetaModifier | Qt.Key_N))
+        new_window_action.triggered.connect(lambda: open_new_window(self.config_dir))
+        file_menu.addAction(new_window_action)
+
     def closeEvent(self, event) -> None:
         for pane in self.panes:
             pane.terminate()
+        if self in _open_windows:
+            _open_windows.remove(self)
         super().closeEvent(event)
+
+
+# Without an explicit position, every new top-level QMainWindow lands at
+# the exact same spot -- a second window opened via Cmd+N would sit
+# perfectly on top of the first, indistinguishable from "nothing happened"
+# until dragged aside. Nudge each additional window diagonally instead
+# (same idea as Terminal.app/most Mac apps' window cascade), wrapping back
+# to the base offset after a few steps so windows don't march off-screen.
+_CASCADE_STEP_PX = 32
+_CASCADE_MAX_STEPS = 10
+
+
+def open_new_window(config_dir: str) -> "MainWindow":
+    # Every window shares the same config_dir/list of saved configs (like
+    # Terminal.app's window groups/profiles) rather than each getting its
+    # own isolated set -- a layout saved in one window is loadable from any
+    # other. A brand-new window otherwise starts completely fresh (its own
+    # new pty panes at the "default" config's layout), not a clone of
+    # whichever window's Cmd+N triggered it.
+    window = MainWindow(config_dir=config_dir)
+    step = len(_open_windows) % _CASCADE_MAX_STEPS
+    _open_windows.append(window)
+    window.show()
+    if step:
+        # Only *after* show(): a window's pre-show geometry is just Qt's
+        # own placeholder default, nowhere near where the window manager
+        # actually auto-places a freshly shown, unpositioned window (macOS
+        # picks a sensible spot on its own) -- moving before show() would
+        # cascade from that placeholder instead of from the real position.
+        window.move(window.x() + step * _CASCADE_STEP_PX, window.y() + step * _CASCADE_STEP_PX)
+    return window
 
 
 def main():
@@ -320,8 +375,7 @@ def main():
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 
-    window = MainWindow(config_dir=MainWindow.default_config_dir())
-    window.show()
+    open_new_window(MainWindow.default_config_dir())
     sys.exit(app.exec())
 
 
