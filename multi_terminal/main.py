@@ -216,8 +216,13 @@ class MainWindow(QMainWindow):
         if select and select in names:
             self.config_combo.setCurrentText(select)
 
-    def _write_config(self, name: str) -> None:
-        os.makedirs(self.config_dir, exist_ok=True)
+    def _write_config(self, name: str) -> bool:
+        try:
+            os.makedirs(self.config_dir, exist_ok=True)
+        except OSError as e:
+            QMessageBox.critical(self, "Save failed", f"Could not create config directory:\n{e}")
+            return False
+
         pane_paths = {p.pane_id: p.path_edit.text() for p in self.panes}
         # Refresh self._pane_histories with each live pane's latest history
         # (in case something was typed since the last rebuild), then save
@@ -226,11 +231,23 @@ class MainWindow(QMainWindow):
         # is written to disk too, instead of being silently dropped.
         for pane in self.panes:
             self._pane_histories[pane.pane_id] = pane.terminal.get_history()
-        save_settings_file(
+        ok = save_settings_file(
             config_file_path(self.config_dir, name), self.current_mode, pane_paths,
             self.current_font_size, self._pane_histories,
         )
+        if not ok:
+            # A GUI app launched via Finder/`open` has no attached console,
+            # so the print() inside save_settings_file is otherwise
+            # invisible -- without this, a failed save looks like nothing
+            # happened at all.
+            QMessageBox.critical(
+                self, "Save failed",
+                f"Could not write config file for \"{name}\". Check disk space and permissions.",
+            )
+            return False
+
         self.refresh_config_list(select=name)
+        return True
 
     def _load_config(self, name: str) -> None:
         mode, paths, font_size, histories = load_settings_file(config_file_path(self.config_dir, name))
@@ -257,11 +274,16 @@ class MainWindow(QMainWindow):
 
     def save_config_as(self) -> None:
         name, ok = QInputDialog.getText(self, "Save Config As", "Config name:")
-        if not ok or not name.strip():
-            return
+        if not ok:
+            return  # user cancelled -- silent is correct here
+        # A blank name used to hit this same early return with zero
+        # feedback, indistinguishable from a successful save that just
+        # happened not to change anything visible -- give it the same
+        # warning as an all-invalid-characters name instead of silently
+        # doing nothing.
         safe_name = sanitize_config_name(name)
         if not safe_name:
-            QMessageBox.warning(self, "Invalid name", "Please use letters, numbers, - or _.")
+            QMessageBox.warning(self, "Invalid name", "Please enter a name using letters, numbers, - or _.")
             return
         self._write_config(safe_name)
 

@@ -172,11 +172,92 @@ def test_save_config_as_rejects_blank_name(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
     window = MainWindow(config_dir=str(tmp_path / "configs"))
 
-    with patch("main.QInputDialog.getText", return_value=("   ", True)):
+    # QMessageBox.warning() opens a real modal event loop -- under the
+    # offscreen QPA platform (see conftest.py) nothing exists to click its
+    # OK button, so it blocks forever unless patched out, same as any other
+    # test that exercises a path showing one.
+    with patch("main.QInputDialog.getText", return_value=("   ", True)), \
+         patch("main.QMessageBox.warning") as warning_mock:
         window.save_config_as()
 
     items = [window.config_combo.itemText(i) for i in range(window.config_combo.count())]
     assert items == [DEFAULT_CONFIG_NAME]
+    warning_mock.assert_called_once()
+
+
+def test_save_config_as_with_blank_name_does_not_silently_no_op(qapp, monkeypatch, tmp_path):
+    # Regression test: a blank name used to hit the same early return as a
+    # cancelled dialog, with zero feedback -- indistinguishable from "nothing
+    # happened". It must warn the user instead.
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+
+    with patch("main.QInputDialog.getText", return_value=("", True)), \
+         patch("main.QMessageBox.warning") as warning_mock:
+        window.save_config_as()
+
+    warning_mock.assert_called_once()
+
+
+def test_save_config_as_cancelled_shows_no_warning(qapp, monkeypatch, tmp_path):
+    # Cancelling the dialog (ok=False) is the one case that must stay silent.
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+
+    with patch("main.QInputDialog.getText", return_value=("", False)), \
+         patch("main.QMessageBox.warning") as warning_mock, \
+         patch("main.QMessageBox.critical") as critical_mock:
+        window.save_config_as()
+
+    warning_mock.assert_not_called()
+    critical_mock.assert_not_called()
+
+
+def test_write_config_shows_error_and_does_not_update_combo_when_save_fails(qapp, monkeypatch, tmp_path):
+    # Regression test: save_settings_file() failing (disk full, permissions,
+    # etc.) used to only print() -- invisible for a GUI app launched via
+    # Finder/`open` with no attached console. Must surface an error instead
+    # of looking exactly like a successful, no-op save.
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+    monkeypatch.setattr("main.save_settings_file", lambda *a, **k: False)
+
+    with patch("main.QMessageBox.critical") as critical_mock:
+        ok = window._write_config("newconfig")
+
+    assert ok is False
+    critical_mock.assert_called_once()
+    items = [window.config_combo.itemText(i) for i in range(window.config_combo.count())]
+    assert "newconfig" not in items
+
+
+def test_write_config_shows_error_when_makedirs_fails(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+
+    def boom(*a, **k):
+        raise OSError("Read-only file system")
+
+    monkeypatch.setattr(os, "makedirs", boom)
+
+    with patch("main.QMessageBox.critical") as critical_mock:
+        ok = window._write_config("newconfig")
+
+    assert ok is False
+    critical_mock.assert_called_once()
+
+
+def test_write_config_returns_true_and_shows_no_error_on_success(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(ShellPane, "start_shell", lambda self: None)
+    window = MainWindow(config_dir=str(tmp_path / "configs"))
+
+    with patch("main.QMessageBox.critical") as critical_mock:
+        ok = window._write_config("newconfig")
+
+    assert ok is True
+    critical_mock.assert_not_called()
+    items = [window.config_combo.itemText(i) for i in range(window.config_combo.count())]
+    assert "newconfig" in items
 
 
 def test_load_selected_config_applies_its_settings(qapp, monkeypatch, tmp_path):

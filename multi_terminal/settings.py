@@ -23,7 +23,7 @@ def save_settings_file(
     pane_paths: dict[int, str],
     font_size: int = DEFAULT_FONT_SIZE,
     pane_histories: dict[int, list[str]] | None = None,
-) -> None:
+) -> bool:
     pane_histories = pane_histories or {}
     # Iterate the union of pane_paths and pane_histories keys, not just
     # pane_paths: a pane_id can have recorded history while temporarily
@@ -43,8 +43,13 @@ def save_settings_file(
     try:
         with open(path, "w") as f:
             json.dump(config, f, indent=4)
+        return True
     except OSError as e:
+        # A bare print() here is invisible for a GUI app launched via
+        # Finder/`open` (no attached console) -- the caller must surface
+        # this to the user itself (e.g. a QMessageBox), not just log it.
         print(f"Save error: {e}")
+        return False
 
 
 def load_settings_file(path: str) -> tuple[str, dict[int, str], int, dict[int, list[str]]]:
