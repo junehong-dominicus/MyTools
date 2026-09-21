@@ -232,3 +232,4 @@ configs/
 
 # Claude Code tool state (worktrees, session/scheduling state, etc.)
 .claude/
+serial_monitor/exe/logs/
