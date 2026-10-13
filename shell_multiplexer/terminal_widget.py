@@ -42,24 +42,8 @@ def compute_grid_size(widget_width: int, widget_height: int, cell_width: int, ce
 
 
 def compute_visible_window(buffer_lines: int, buffer_columns: int, visible_rows: int, visible_cols: int, cursor_row: int) -> tuple[int, int, int]:
-    """Return (top_row, rows_to_render, cols_to_render): the window of a
-    pyte buffer -- which only ever grows, see
-    TerminalWidget._sync_size_to_widget -- that corresponds to what the
-    widget can currently actually show.
-
-    The row window ends at the *cursor's* current row, not simply the
-    bottom of the buffer: pyte's own auto-scroll only triggers once its own
-    (possibly much taller, padded) line count is filled, not the widget's
-    smaller current visible size, so new output can sit well above the
-    buffer's bottom for a long time (e.g. right after a shrink, before the
-    pane has been used enough to fill even its old, larger size). Anchoring
-    on the cursor keeps whatever was most recently written in view either
-    way, and naturally matches "bottom of buffer" once pyte's own
-    scrolling *has* kicked in (cursor sits at buffer_lines - 1 then).
-
-    Columns don't need the same treatment: unlike rows, pyte has no
-    left/right auto-scroll -- a line either wraps into a new row or is
-    truncated -- so content always starts at column 0."""
+    """Return the visible region, keeping the cursor in view for callers
+    that supply a buffer larger than the active grid."""
     rows_to_render = min(buffer_lines, visible_rows)
     cols_to_render = min(buffer_columns, visible_cols)
     max_top_row = buffer_lines - rows_to_render
@@ -94,11 +78,7 @@ class TerminalWidget(QWidget):
         super().__init__(parent)
         self.backend = PtyBackend(self)
         self.screen: TerminalScreen | None = None
-        # The pty's/shell's real, current column/row count -- distinct from
-        # self.screen.columns/lines, which only ever grows (see
-        # _sync_size_to_widget). Used to render just the bottom-left window
-        # of the (possibly taller/wider) pyte buffer that corresponds to
-        # what the widget can actually show right now.
+        # Active dimensions shared by the emulator, renderer, and PTY.
         self._visible_cols = 80
         self._visible_rows = 24
         self._history: list[str] = []
@@ -164,23 +144,9 @@ class TerminalWidget(QWidget):
         cols, rows = compute_grid_size(self.width(), self.height(), cell_w, cell_h)
         self._visible_cols, self._visible_rows = cols, rows
 
-        # Never shrink pyte's own buffer: pyte's Screen.resize() drops rows
-        # from the *top* (and crops columns from the *right*) when shrinking
-        # -- correct behavior for trimming real scrollback, but a freshly
-        # spawned shell's only output so far (its first prompt) sits at the
-        # very top of an otherwise-empty buffer, so shrinking to the pane's
-        # real (often smaller, once split across multiple panes) size would
-        # wipe it out. Only ever grow the pyte-side buffer; paintEvent then
-        # renders just the bottom-left _visible_rows x _visible_cols window
-        # of it, which is always where the shell's *current* output is,
-        # since new content is written at increasing row numbers as before.
-        buffer_cols = max(self.screen.columns, cols)
-        buffer_rows = max(self.screen.lines, rows)
-        self.screen.resize(columns=buffer_cols, lines=buffer_rows)
-
-        # The real pty/shell must still be told its actual, current size --
-        # for correct wrapping, progress bars, $Host.UI.RawUI.WindowSize,
-        # tab-completion menu placement, etc.
+        # The emulator and the PTY must agree on the active grid so ordinary
+        # output wraps and cursor-addressed applications remain visible.
+        self.screen.resize(columns=cols, lines=rows)
         self.backend.resize(cols, rows)
 
     def set_font_size(self, size: int) -> None:
@@ -266,11 +232,7 @@ class TerminalWidget(QWidget):
         cell_w, cell_h = self._cell_size()
         ascent = self._metrics.ascent()
 
-        # self.screen may be *taller*/*wider* than what currently fits in
-        # the widget (see _sync_size_to_widget: it only ever grows, to avoid
-        # losing content on shrink) -- render just the window (ending at the
-        # cursor's row) that corresponds to the pane's actual current size,
-        # which is always where the shell's current output is.
+        # Render the active terminal grid.
         top_row, rows_to_render, visible_cols = compute_visible_window(
             self.screen.lines, self.screen.columns, self._visible_rows, self._visible_cols,
             cursor_row=self.screen.cursor.y,

@@ -142,17 +142,19 @@ class EmbeddedSystemScanner:
                                     "services": []
                                 }
                             self.scanner.devices[ip]["name"] = name.split(".")[0]
-                            if "Embedded System" in name.lower():
+                            if "embedded system" in name.lower():
                                 self.scanner.devices[ip]["manufacturer"] = "Field Devices Inc."
 
         zeroconf = Zeroconf()
-        browser = ServiceBrowser(zeroconf, "_http._tcp.local.", MyListener(self))
-        # Dwell in short slices so a stop request cuts the wait short.
-        elapsed = 0.0
-        while elapsed < 5.0 and not self._stop:
-            time.sleep(0.2)
-            elapsed += 0.2
-        zeroconf.close()
+        try:
+            browser = ServiceBrowser(zeroconf, "_http._tcp.local.", MyListener(self))
+            # Dwell in short slices so a stop request cuts the wait short.
+            elapsed = 0.0
+            while elapsed < 5.0 and not self._stop:
+                time.sleep(0.2)
+                elapsed += 0.2
+        finally:
+            zeroconf.close()
 
     def _get_with_retry(self, url, timeout, attempts=3, backoff=0.4):
         """GET with retry on connection errors.
@@ -191,8 +193,8 @@ class EmbeddedSystemScanner:
                 # Primary check: explicit "device" field added in firmware v1.0+
                 # Fallback: look for Embedded System-specific fields ("serial", "mac_eth", "free_heap")
                 is_embedded_system = (
-                    data.get("device", "").lower() == "Embedded System"
-                    or "Embedded System" in data.get("version", "").lower()
+                    str(data.get("device", "")).casefold() == "embedded system"
+                    or "embedded system" in str(data.get("version", "")).casefold()
                     or ("serial" in data and "mac_eth" in data)
                 )
                 if is_embedded_system:
@@ -266,14 +268,15 @@ class EmbeddedSystemScanner:
                 self.was_stopped = True
                 return self.devices
 
-            # mDNS scan in background
-            mdns_thread = threading.Thread(target=self.mdns_scan)
-            mdns_thread.daemon = True
-            mdns_thread.start()
+            # Finish discovery before probing so mDNS-only devices are included.
+            # mdns_scan closes its browser before returning; probe a snapshot rather
+            # than an iterator over shared state.
+            self.mdns_scan()
+            with self._devices_lock:
+                addresses = list(self.devices)
 
-            # Probe HTTP for each found device (probe_services bails if stopped)
             probe_threads = []
-            for ip in self.devices:
+            for ip in addresses:
                 if self._stop:
                     break
                 t = threading.Thread(target=self.probe_services, args=(ip,))
@@ -283,8 +286,6 @@ class EmbeddedSystemScanner:
 
             for t in probe_threads:
                 t.join()
-
-            mdns_thread.join()
 
             if self._stop:
                 self.was_stopped = True

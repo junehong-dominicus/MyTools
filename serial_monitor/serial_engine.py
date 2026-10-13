@@ -1,3 +1,4 @@
+import codecs
 import serial
 import threading
 import time
@@ -5,10 +6,11 @@ import os
 from datetime import datetime
 
 class SerialEngine:
-    def __init__(self, port, baudrate, on_data_received):
+    def __init__(self, port, baudrate, on_data_received, on_error=None):
         self.port = port
         self.baudrate = baudrate
         self.on_data_received = on_data_received
+        self.on_error = on_error
         self.ser = None
         self.running = False
         self.thread = None
@@ -51,6 +53,13 @@ class SerialEngine:
             self.thread.start()
             return True, "Connected"
         except Exception as e:
+            self.running = False
+            # Thread.start() can fail before the thread has an identity; joining
+            # an unstarted thread raises and would prevent resource cleanup.
+            if self.thread is not None and self.thread.ident is None:
+                self.thread = None
+            self.stop()
+            self.log_filename = None
             return False, str(e)
 
     def stop(self):
@@ -98,12 +107,13 @@ class SerialEngine:
             print(f"Cleanup error: {e}")
 
     def _run(self):
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         while self.running:
             if self.ser and self.ser.is_open:
                 try:
                     if self.ser.in_waiting > 0:
                         data = self.ser.read(self.ser.in_waiting)
-                        text = data.decode('utf-8', errors='replace')
+                        text = decoder.decode(data)
                         
                         # Write to log file
                         if self.log_file:
@@ -121,4 +131,14 @@ class SerialEngine:
                 except Exception as e:
                     print(f"Read error on {self.port}: {e}")
                     self.running = False
+                    if self.on_error:
+                        self.on_error(str(e))
             time.sleep(0.01)
+
+        tail = decoder.decode(b"", final=True)
+        if tail:
+            if self.log_file:
+                self.log_file.write(tail)
+                self.log_file.flush()
+            if self.on_data_received:
+                self.on_data_received(tail)

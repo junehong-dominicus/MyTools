@@ -3,7 +3,7 @@ import webbrowser
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
-                             QAbstractItemView)
+                             QAbstractItemView, QProgressBar)
 from PySide6.QtCore import Qt, Signal, QObject
 
 from scanner import EmbeddedSystemScanner
@@ -19,6 +19,7 @@ HEADERS = ("", "Device Name", "IP Address", "Manufacturer", "MAC Address", "Firm
 
 class ScanResultSignal(QObject):
     finished = Signal(dict)
+    failed = Signal(str)
 
 
 class ScanDialog(QDialog):
@@ -34,6 +35,7 @@ class ScanDialog(QDialog):
 
         self.result_signal = ScanResultSignal()
         self.result_signal.finished.connect(self._on_scan_finished)
+        self.result_signal.failed.connect(self._on_scan_failed)
 
         layout = QVBoxLayout(self)
 
@@ -46,6 +48,10 @@ class ScanDialog(QDialog):
         header_row.addWidget(self.interface_combo)
 
         header_row.addStretch()
+        self.open_btn = QPushButton("Open Web UI")
+        self.open_btn.setEnabled(False)
+        self.open_btn.clicked.connect(self.open_selected_device)
+        header_row.addWidget(self.open_btn)
 
         self.scan_btn = QPushButton("Start Scan")
         self.scan_btn.clicked.connect(self.toggle_scan)
@@ -59,10 +65,18 @@ class ScanDialog(QDialog):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.cellDoubleClicked.connect(self.on_row_double_clicked)
+        self.table.itemSelectionChanged.connect(self._on_selection_changed)
         layout.addWidget(self.table)
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(8)
+        self.progress.hide()
+        layout.addWidget(self.progress)
 
         # Status line
         self.status_label = QLabel("Ready to scan")
@@ -74,6 +88,9 @@ class ScanDialog(QDialog):
             return
 
         self.scan_in_progress = True
+        self.interface_combo.setEnabled(False)
+        self.open_btn.setEnabled(False)
+        self.progress.show()
         self.scan_btn.setText("Stop Scan")
         selected_iface = self.interface_combo.currentText()
         self.status_label.setText(f"Scanning {selected_iface}...")
@@ -89,9 +106,21 @@ class ScanDialog(QDialog):
         self.scanner.stop()
 
     def _run_scan(self, selected_iface):
-        results = self.scanner.full_scan(target_interface=selected_iface)
-        # scanner runs on a worker thread; hop back to the Qt thread to touch widgets.
-        self.result_signal.finished.emit(results)
+        try:
+            results = self.scanner.full_scan(target_interface=selected_iface)
+        except Exception as error:
+            self.result_signal.failed.emit(str(error))
+        else:
+            # Hop back to the Qt thread to touch widgets.
+            self.result_signal.finished.emit(results)
+
+    def _on_scan_failed(self, message):
+        self.scan_in_progress = False
+        self.interface_combo.setEnabled(True)
+        self.progress.hide()
+        self.scan_btn.setEnabled(True)
+        self.scan_btn.setText("Start Scan")
+        self.status_label.setText(f"Scan failed: {message}")
 
     def _on_scan_finished(self, results):
         self.table.setRowCount(0)
@@ -100,22 +129,38 @@ class ScanDialog(QDialog):
             status = "●" if "Configuration WebUI" in data["services"] else "○"
             values = (status, data["name"], ip, data["manufacturer"], data["mac"], data.get("version", "—"))
             for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                item = QTableWidgetItem(str(value))
+                if col == COLUMNS.index("ip"):
+                    item.setData(Qt.UserRole, "Configuration WebUI" in data["services"])
                 if col == 0:
                     item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row, col, item)
 
         self.scan_in_progress = False
+        self.interface_combo.setEnabled(True)
+        self.progress.hide()
         self.scan_btn.setEnabled(True)
         self.scan_btn.setText("Start Scan")
         if self.scanner.was_stopped:
             self.status_label.setText(f"Scan stopped. Found {len(results)} device(s).")
+        elif results:
+            self.status_label.setText(f"Scan complete. Found {len(results)} device(s). Select an identified device to open its Web UI.")
         else:
-            self.status_label.setText(f"Scan complete. Found {len(results)} device(s).")
+            self.status_label.setText("No devices found. Check the selected interface and device connection, then scan again.")
+
+    def _on_selection_changed(self):
+        item = self.table.item(self.table.currentRow(), COLUMNS.index("ip"))
+        self.open_btn.setEnabled(bool(item and item.data(Qt.UserRole)) and not self.scan_in_progress)
+
+    def open_selected_device(self):
+        self.on_row_double_clicked(self.table.currentRow(), 0)
 
     def on_row_double_clicked(self, row, _column):
         ip_item = self.table.item(row, COLUMNS.index("ip"))
         if not ip_item:
+            return
+        if not ip_item.data(Qt.UserRole):
+            self.status_label.setText("No configuration Web UI was detected for this device.")
             return
         webbrowser.open(f"http://{ip_item.text()}:8000")
 

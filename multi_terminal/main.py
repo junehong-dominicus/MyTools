@@ -31,7 +31,9 @@ class MainWindow(QMainWindow):
     def __init__(self, config_dir: str = CONFIG_DIR):
         super().__init__()
         self.config_dir = config_dir
-        self.setWindowTitle("MyTools — MultiTerminal")
+        self.active_config_name = DEFAULT_CONFIG_NAME
+        self._pane_paths: dict[int, str] = {}
+        self.setWindowTitle(f"MyTools - MultiTerminal [{self.active_config_name}]")
         self.setMinimumSize(1200, 800)
         self._build_menu_bar()
 
@@ -52,7 +54,7 @@ class MainWindow(QMainWindow):
         outer_layout = QVBoxLayout(central)
 
         toolbar = QFrame()
-        toolbar.setFixedHeight(20)
+        toolbar.setMinimumHeight(44)
         t_layout = QHBoxLayout(toolbar)
         t_layout.setContentsMargins(10, 0, 10, 0)
 
@@ -64,8 +66,9 @@ class MainWindow(QMainWindow):
         t_layout.addWidget(QLabel("SHELL COUNT:"))
         self.shell_count_combo = QComboBox()
         self.shell_count_combo.addItems(LAYOUT_MODES)
+        self.shell_count_combo.setToolTip("Keep existing sessions; adding panes opens new shells, removing panes closes them.")
         self.shell_count_combo.setFixedWidth(70)
-        self.shell_count_combo.setFixedHeight(16)
+        self.shell_count_combo.setMinimumHeight(28)
         self.shell_count_combo.setStyleSheet("padding: 0px 4px;")
         t_layout.addWidget(self.shell_count_combo)
 
@@ -73,32 +76,34 @@ class MainWindow(QMainWindow):
         self.font_size_combo = QComboBox()
         self.font_size_combo.addItems([str(s) for s in FONT_SIZES])
         self.font_size_combo.setFixedWidth(55)
-        self.font_size_combo.setFixedHeight(16)
+        self.font_size_combo.setMinimumHeight(28)
         self.font_size_combo.setStyleSheet("padding: 0px 4px;")
         t_layout.addWidget(self.font_size_combo)
 
         t_layout.addWidget(QLabel("CONFIG:"))
         self.config_combo = QComboBox()
-        self.config_combo.setFixedWidth(100)
-        self.config_combo.setFixedHeight(16)
+        self.config_combo.setMinimumWidth(150)
+        self.config_combo.setMinimumHeight(28)
         self.config_combo.setStyleSheet("padding: 0px 4px;")
         t_layout.addWidget(self.config_combo)
 
         save_btn = QPushButton("Save")
-        save_btn.setFixedHeight(16)
+        save_btn.setMinimumHeight(28)
         save_btn.setStyleSheet("padding: 0px 10px;")
+        save_btn.setToolTip("Save changes to the active configuration.")
         save_btn.clicked.connect(self.save_current_config)
         t_layout.addWidget(save_btn)
 
         save_as_btn = QPushButton("Save As…")
-        save_as_btn.setFixedHeight(16)
+        save_as_btn.setMinimumHeight(28)
         save_as_btn.setStyleSheet("padding: 0px 10px;")
         save_as_btn.clicked.connect(self.save_config_as)
         t_layout.addWidget(save_as_btn)
 
         load_btn = QPushButton("Load")
-        load_btn.setFixedHeight(16)
+        load_btn.setMinimumHeight(28)
         load_btn.setStyleSheet("padding: 0px 10px;")
+        load_btn.setToolTip("Load the selected configuration and restart its shells.")
         load_btn.clicked.connect(self.load_selected_config)
         t_layout.addWidget(load_btn)
 
@@ -151,27 +156,25 @@ class MainWindow(QMainWindow):
         return os.path.join(base_dir, CONFIG_DIR)
 
     def build_panes(self, mode: str, initial_paths: dict[int, str] | None = None, initial_histories: dict[int, list[str]] | None = None) -> None:
-        prior_paths = {p.pane_id: p.path_edit.text() for p in self.panes}
-        if initial_paths:
-            prior_paths.update(initial_paths)
-
-        # Refresh self._pane_histories with each currently-live pane's latest
-        # history before tearing panes down -- update, not replace, so
-        # entries for pane_ids that aren't currently live (already tucked
-        # away from an earlier shrink) are retained rather than lost. A
-        # passed-in initial_histories (from _load_config, or the initial
-        # config load in __init__) is then treated as authoritative for the
-        # pane_ids it contains, overriding whatever's currently tracked for
-        # those ids.
-        for pane in self.panes:
-            self._pane_histories[pane.pane_id] = pane.terminal.get_history()
-        if initial_histories:
-            self._pane_histories.update(initial_histories)
-
-        for pane in self.panes:
-            pane.terminate()
+        reset = initial_paths is not None or initial_histories is not None
+        existing = {p.pane_id: p for p in self.panes}
+        if reset:
+            self._pane_paths = dict(initial_paths or {})
+            self._pane_histories = dict(initial_histories or {})
+        else:
+            for pane in self.panes:
+                self._pane_paths[pane.pane_id] = pane.path_edit.text()
+                self._pane_histories[pane.pane_id] = pane.terminal.get_history()
+        prior_paths = self._pane_paths.copy()
+        wanted = {pid for row in compute_grid_rows(mode) for pid in row}
+        reusable = {}
+        for pane_id, pane in existing.items():
             pane.setParent(None)
-            pane.deleteLater()
+            if not reset and pane_id in wanted:
+                reusable[pane_id] = pane
+            else:
+                pane.terminate()
+                pane.deleteLater()
         self.panes = []
         self.current_mode = mode
 
@@ -184,18 +187,22 @@ class MainWindow(QMainWindow):
         main_splitter = QSplitter(Qt.Vertical)
         for row in rows:
             if len(row) == 1:
-                pane = self._make_pane(row[0], prior_paths, self._pane_histories)
+                pane = self._make_pane(row[0], prior_paths, self._pane_histories, reusable)
                 main_splitter.addWidget(pane)
             else:
                 row_splitter = QSplitter(Qt.Horizontal)
                 for pane_id in row:
-                    pane = self._make_pane(pane_id, prior_paths, self._pane_histories)
+                    pane = self._make_pane(pane_id, prior_paths, self._pane_histories, reusable)
                     row_splitter.addWidget(pane)
                 main_splitter.addWidget(row_splitter)
 
         self.pane_area_layout.addWidget(main_splitter)
 
-    def _make_pane(self, pane_id: int, prior_paths: dict[int, str], prior_histories: dict[int, list[str]]) -> ShellPane:
+    def _make_pane(self, pane_id: int, prior_paths: dict[int, str], prior_histories: dict[int, list[str]], reusable: dict[int, ShellPane] | None = None) -> ShellPane:
+        if reusable and pane_id in reusable:
+            pane = reusable[pane_id]
+            self.panes.append(pane)
+            return pane
         path = prior_paths.get(pane_id, os.path.expanduser("~"))
         pane = ShellPane(pane_id, path)
         pane.terminal.set_font_size(self.current_font_size)
@@ -205,6 +212,17 @@ class MainWindow(QMainWindow):
         return pane
 
     def _on_shell_count_changed(self, text: str) -> None:
+        wanted = {pid for row in compute_grid_rows(text) for pid in row}
+        closing = [p for p in self.panes if p.pane_id not in wanted and p.terminal.backend.is_alive()]
+        if closing and QMessageBox.question(
+            self, "Close shell panes?",
+            f"This will stop {len(closing)} shell session(s). Sessions in the remaining panes will continue.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        ) != QMessageBox.Yes:
+            self.shell_count_combo.blockSignals(True)
+            self.shell_count_combo.setCurrentText(self.current_mode)
+            self.shell_count_combo.blockSignals(False)
+            return
         self.build_panes(text)
 
     def _on_font_size_changed(self, text: str) -> None:
@@ -231,7 +249,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Save failed", f"Could not create config directory:\n{e}")
             return False
 
-        pane_paths = {p.pane_id: p.path_edit.text() for p in self.panes}
+        self._pane_paths.update({p.pane_id: p.path_edit.text() for p in self.panes})
+        pane_paths = self._pane_paths.copy()
         # Refresh self._pane_histories with each live pane's latest history
         # (in case something was typed since the last rebuild), then save
         # from self._pane_histories itself -- not a live-panes-only dict --
@@ -254,11 +273,18 @@ class MainWindow(QMainWindow):
             )
             return False
 
+        self.active_config_name = name
         self.refresh_config_list(select=name)
+        self.setWindowTitle(f"MyTools - MultiTerminal [{name}]")
+        self.statusBar().showMessage(f"Saved configuration: {name}", 5000)
         return True
 
     def _load_config(self, name: str) -> None:
-        mode, paths, font_size, histories = load_settings_file(config_file_path(self.config_dir, name))
+        try:
+            mode, paths, font_size, histories = load_settings_file(config_file_path(self.config_dir, name), strict=True)
+        except (ValueError, OSError) as error:
+            QMessageBox.warning(self, "Load failed", f"Could not load configuration:\n{error}")
+            return False
         self.current_font_size = font_size
 
         self.font_size_combo.blockSignals(True)
@@ -269,16 +295,14 @@ class MainWindow(QMainWindow):
         self.shell_count_combo.setCurrentText(mode)
         self.shell_count_combo.blockSignals(False)
 
-        # histories flows into build_panes(initial_histories=...), which
-        # merges (updates, doesn't replace) it into self._pane_histories --
-        # the loaded config's history is authoritative for the pane_ids it
-        # contains, while pane_ids it doesn't mention keep whatever
-        # self._pane_histories already had for them.
+        # Loaded configs replace cached paths/history; layout changes retain them.
         self.build_panes(mode, paths, histories)
+        self.active_config_name = name
+        self.setWindowTitle(f"MyTools - MultiTerminal [{name}]")
+        self.statusBar().showMessage(f"Loaded configuration: {name}", 5000)
 
     def save_current_config(self) -> None:
-        name = self.config_combo.currentText() or DEFAULT_CONFIG_NAME
-        self._write_config(name)
+        self._write_config(self.active_config_name)
 
     def save_config_as(self) -> None:
         name, ok = QInputDialog.getText(self, "Save Config As", "Config name:")
@@ -293,11 +317,19 @@ class MainWindow(QMainWindow):
         if not safe_name:
             QMessageBox.warning(self, "Invalid name", "Please enter a name using letters, numbers, - or _.")
             return
+        if safe_name != self.active_config_name and os.path.exists(config_file_path(self.config_dir, safe_name)):
+            if QMessageBox.question(self, "Replace configuration?", f"Replace the saved configuration '{safe_name}'?",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
         self._write_config(safe_name)
 
     def load_selected_config(self) -> None:
         name = self.config_combo.currentText()
         if name:
+            if any(p.terminal.backend.is_alive() for p in self.panes):
+                if QMessageBox.question(self, "Load configuration?", "Loading a configuration will stop the current shells and open new sessions.",
+                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                    return
             self._load_config(name)
 
     def _build_menu_bar(self) -> None:

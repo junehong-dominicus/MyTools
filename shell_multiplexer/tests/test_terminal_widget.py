@@ -253,11 +253,9 @@ def test_start_defers_size_correction_to_widgets_real_size(qapp, tmp_path, monke
     assert resize_calls == [expected]
     # The real/reported size always matches the widget's actual geometry...
     assert (widget._visible_cols, widget._visible_rows) == expected
-    # ...but pyte's own buffer only ever grows, never shrinks, in each
-    # dimension independently (columns here happens to already be >=
-    # expected, so it's untouched; lines grew to match).
-    assert widget.screen.columns == max(80, expected[0])
-    assert widget.screen.lines == max(24, expected[1])
+    # The emulator uses the same active dimensions as the PTY.
+    assert widget.screen.columns == expected[0]
+    assert widget.screen.lines == expected[1]
 
     widget._repaint_timer.stop()
     widget._blink_timer.stop()
@@ -419,15 +417,8 @@ def test_history_caps_at_max_entries_when_appending(qapp):
 
 
 def test_new_output_stays_visible_once_it_exceeds_the_shrunk_row_count(qapp, tmp_path, monkeypatch):
-    # Regression test for the risk a naive "never shrink" fix would create:
-    # if pyte's buffer only ever grows but rendering always showed the *top*
-    # of it, new output written past a small pane's real row count would
-    # never appear -- the visible area would look frozen on whatever content
-    # happened to occupy the first few rows. Rendering the *bottom*
-    # _visible_rows of the buffer (compute_visible_window) instead means new
-    # output -- which pyte always appends at increasing row numbers -- stays
-    # visible no matter how much the buffer has grown beyond the pane's
-    # current real size.
+    # After shrinking, continued output must scroll within the active grid
+    # and leave the newest line visible.
     monkeypatch.setattr(PtyBackend, "spawn", lambda self, cwd, columns=80, lines=24: None)
     monkeypatch.setattr(PtyBackend, "resize", lambda self, columns, lines: None)
 
@@ -442,12 +433,11 @@ def test_new_output_stays_visible_once_it_exceeds_the_shrunk_row_count(qapp, tmp
     widget.start(str(tmp_path))
     QTest.qWait(_RESIZE_DEBOUNCE_MS + 100)
 
-    # Shrink the pane to a small real size (e.g. after splitting into
-    # several panes) -- pyte's buffer stays at its prior (taller) size.
+    # Shrink both the emulator and the PTY to the active pane size.
     widget.resize(800, 150)
     QTest.qWait(_RESIZE_DEBOUNCE_MS + 100)
     small_visible_rows = widget._visible_rows
-    assert small_visible_rows < widget.screen.lines  # buffer is padded taller than visible
+    assert small_visible_rows == widget.screen.lines
 
     # Write more lines than fit in the small visible area.
     line_count = small_visible_rows + 5
@@ -470,3 +460,18 @@ def test_new_output_stays_visible_once_it_exceeds_the_shrunk_row_count(qapp, tmp
 
     widget._repaint_timer.stop()
     widget._blink_timer.stop()
+
+
+def test_narrow_widget_wraps_output_instead_of_hiding_columns(qapp, monkeypatch):
+    widget = TerminalWidget()
+    widget.screen = TerminalScreen(columns=80, lines=24)
+    monkeypatch.setattr(PtyBackend, "resize", lambda *args: None)
+    cw, ch = widget._cell_size()
+    widget.resize(cw * 10, ch * 3)
+    widget._apply_size_from_geometry()
+    widget._on_output("abcdefghijklmnopqrst")
+    assert widget.screen.columns == widget._visible_cols == 10
+    assert widget.screen.get_line_text(0) == "abcdefghij"
+    assert widget.screen.get_line_text(1) == "klmnopqrst"
+    widget._blink_timer.stop()
+    widget._resize_debounce_timer.stop()

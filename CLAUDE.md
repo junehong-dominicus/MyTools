@@ -38,7 +38,7 @@ uv run python main.py
 uv run python build_exe.py
 ```
 
-For shell_multiplexer on Windows or multi_terminal on macOS:
+For serial_monitor, shell_multiplexer on Windows, or multi_terminal on macOS:
 
 ```text
 uv sync --group dev
@@ -48,11 +48,13 @@ uv run pytest tests
 Run each suite separately: the apps use identically named top-level modules.
 The test fixtures default Qt to offscreen mode. Validate platform backends on
 their supported OS; do not claim macOS backend coverage from Windows.
-serial_monitor has no test suite in this checkout; use focused verification
-appropriate to the change and report any hardware or network checks not run.
+Serial Monitor tests mock hardware and network I/O. Report live hardware or
+network checks separately from these automated tests.
 No repository-wide lint or type-check configuration is declared here.
 
 ## Change conventions
+
+UI operation contracts and scenarios are documented in docs/ui-workflows.md.
 
 - Follow the surrounding Python and Qt patterns. Preserve the separation
   between UI, terminal screen state, and I/O backends.

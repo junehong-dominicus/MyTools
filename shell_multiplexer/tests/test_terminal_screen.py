@@ -50,3 +50,25 @@ def test_get_line_text_on_second_row():
     screen = TerminalScreen(columns=10, lines=2)
     screen.feed("ab\r\ncd")
     assert screen.get_line_text(1) == "cd"
+
+
+def test_shrink_preserves_prompt_and_wraps_at_new_width():
+    screen = TerminalScreen(columns=80, lines=24)
+    screen.feed("prompt> ")
+    screen.resize(columns=10, lines=3)
+    assert screen.get_line_text(0) == "prompt>"
+    screen.feed("abcdefghijk")
+    assert screen.columns == 10 and screen.lines == 3
+    assert screen.get_line_text(0) == "prompt> ab"
+    assert screen.get_line_text(1) == "cdefghijk"
+    assert screen.cursor.y == 1
+
+
+def test_shrink_keeps_cursor_row_and_moves_old_rows_into_history():
+    screen = TerminalScreen(columns=20, lines=6)
+    screen.feed("one\r\ntwo\r\nthree\r\nfour\r\nfive")
+    screen.resize(columns=20, lines=2)
+    assert screen.get_line_text(0) == "four"
+    assert screen.get_line_text(1) == "five"
+    assert screen.cursor.y == 1
+    assert len(screen._screen.history.top) == 3

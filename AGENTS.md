@@ -17,6 +17,7 @@ copies of the project instructions.
 | `<app>/pyproject.toml`, `<app>/uv.lock` | App-specific dependencies and locked environment |
 | `<app>/build_exe.py`, `<app>/*.spec` | PyInstaller packaging for the corresponding app |
 | `docs/superpowers/specs/`, `docs/superpowers/plans/` | Shared feature designs and implementation plans |
+| `docs/ui-workflows.md` | Desktop operation contracts and UI test scenarios |
 | `README.md` | User-facing installation, launch, and build instructions |
 | `CLAUDE.md` | Shared project instruction source |
 | `.claude/` | Claude layer; existing local settings and task state remain local |

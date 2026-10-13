@@ -52,8 +52,10 @@ def save_settings_file(
         return False
 
 
-def load_settings_file(path: str) -> tuple[str, dict[int, str], int, dict[int, list[str]]]:
+def load_settings_file(path: str, *, strict: bool = False) -> tuple[str, dict[int, str], int, dict[int, list[str]]]:
     if not os.path.exists(path):
+        if strict:
+            raise FileNotFoundError(path)
         return DEFAULT_LAYOUT_MODE, {}, DEFAULT_FONT_SIZE, {}
 
     try:
@@ -73,8 +75,15 @@ def load_settings_file(path: str) -> tuple[str, dict[int, str], int, dict[int, l
         for pid_str, pane_cfg in config.get("panes", {}).items():
             try:
                 pid = int(pid_str)
-                pane_paths[pid] = pane_cfg.get("start_path", "")
-            except (ValueError, AttributeError):
+                start_path = pane_cfg.get("start_path", "")
+                if not isinstance(start_path, str):
+                    if strict:
+                        raise TypeError("Pane start paths must be text.")
+                    start_path = ""
+                pane_paths[pid] = start_path
+            except (ValueError, AttributeError) as error:
+                if strict:
+                    raise TypeError("Invalid pane settings.") from error
                 continue
 
             history = pane_cfg.get("history", [])
@@ -83,7 +92,9 @@ def load_settings_file(path: str) -> tuple[str, dict[int, str], int, dict[int, l
             pane_histories[pid] = history[-MAX_HISTORY_ENTRIES:]
 
         return layout_mode, pane_paths, font_size, pane_histories
-    except (json.JSONDecodeError, KeyError, OSError, AttributeError, TypeError):
+    except (json.JSONDecodeError, KeyError, OSError, AttributeError, TypeError, UnicodeError) as error:
+        if strict:
+            raise ValueError("The configuration is unreadable or has an invalid structure.") from error
         # AttributeError/TypeError cover valid-JSON-but-wrong-shape configs
         # (e.g. top-level "[]" or "null", or "panes" being a list instead of
         # a dict) where .get()/.items() gets called on something that isn't

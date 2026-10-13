@@ -1,3 +1,4 @@
+import codecs
 import fcntl
 import logging
 import os
@@ -80,6 +81,7 @@ class PtyBackend(QObject):
             pass
 
     def _read_loop(self) -> None:
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         while not self._stop:
             try:
                 ready, _, _ = select.select([self._fd], [], [], 0.2)
@@ -95,8 +97,13 @@ class PtyBackend(QObject):
                 break
             if not data:
                 break
-            self.output_received.emit(data.decode("utf-8", errors="replace"))
+            text = decoder.decode(data)
+            if text:
+                self.output_received.emit(text)
 
+        tail = decoder.decode(b"", final=True)
+        if tail:
+            self.output_received.emit(tail)
         code = self._reap()
         if not self._suppress_exit_signal:
             self.exited.emit(code)

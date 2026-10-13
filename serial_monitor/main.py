@@ -11,8 +11,8 @@ from datetime import datetime
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QPushButton, QTextEdit, QSplitter,
                              QFrame, QGroupBox, QMenu, QLineEdit, QInputDialog, QMessageBox)
-from PySide6.QtCore import Qt, Signal, QObject
-from PySide6.QtGui import QFont, QTextCursor, QIcon
+from PySide6.QtCore import Qt, Signal, QObject, QUrl
+from PySide6.QtGui import QFont, QTextCursor, QIcon, QDesktopServices
 
 # Windows Taskbar Icon Fix
 if sys.platform == 'win32':
@@ -35,6 +35,7 @@ from scan_dialog import ScanDialog
 
 class DataSignal(QObject):
     received = Signal(str)
+    failed = Signal(object, str)
 
 class CommandLineEdit(QLineEdit):
     """QLineEdit with shell-style Up/Down command history."""
@@ -97,6 +98,8 @@ class SerialPane(QFrame):
 
         self.port_combo = QComboBox()
         self.refresh_ports()
+        if self.port_combo.count() >= pane_id:
+            self.port_combo.setCurrentIndex(pane_id - 1)
         self.header_layout.addWidget(self.port_combo, 2)
 
         self.baud_combo = QComboBox()
@@ -126,6 +129,9 @@ class SerialPane(QFrame):
         # Log View
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
+        self.log_view.setPlaceholderText("Connect a serial port to view received data.")
+        self.log_view.document().setMaximumBlockCount(10000)
+        self.log_view.setToolTip("Latest 10,000 lines. Full received output is saved in the log files.")
         self.log_view.setFont(QFont("Consolas", 10))
         self.log_view.setStyleSheet("background-color: #0D0D0D; color: #00FF00; border: none;")
         self.layout.addWidget(self.log_view)
@@ -161,6 +167,7 @@ class SerialPane(QFrame):
         # Signals
         self.data_signal = DataSignal()
         self.data_signal.received.connect(self.append_log)
+        self.data_signal.failed.connect(self._on_connection_lost)
 
     def refresh_ports(self):
         current = self.port_combo.currentText()
@@ -170,35 +177,49 @@ class SerialPane(QFrame):
         if current in ports:
             self.port_combo.setCurrentText(current)
 
-    def toggle_connection(self):
-        if self.engine and self.engine.running:
+    def disconnect(self):
+        if self.engine:
+            self.log_path = self.engine.get_log_path() or self.log_path
             self.engine.stop()
             self.engine = None
-            self.status_led.setStyleSheet(f"color: {COLOR_ACCENT_RED}; font-size: 18px;")
-            self.conn_btn.setText("CONNECT")
-            self.conn_btn.setStyleSheet(f"color: {COLOR_ACCENT_GREEN};")
-            self.port_combo.setEnabled(True)
-            self.baud_combo.setEnabled(True)
-            self.input_row.setEnabled(False)
-        else:
-            port = self.port_combo.currentText()
-            baud = int(self.baud_combo.currentText())
-            if port == "No Ports Found": return
+        self.status_led.setStyleSheet(f"color: {COLOR_ACCENT_RED}; font-size: 18px;")
+        self.conn_btn.setText("CONNECT")
+        self.conn_btn.setStyleSheet(f"color: {COLOR_ACCENT_GREEN};")
+        self.port_combo.setEnabled(True)
+        self.baud_combo.setEnabled(True)
+        self.input_row.setEnabled(False)
 
-            self.engine = SerialEngine(port, baud, lambda t: self.data_signal.received.emit(t))
-            success, msg = self.engine.start()
-            if success:
-                self.status_led.setStyleSheet(f"color: {COLOR_ACCENT_GREEN}; font-size: 18px;")
-                self.conn_btn.setText("DISCONNECT")
-                self.conn_btn.setStyleSheet(f"color: {COLOR_ACCENT_RED};")
-                self.port_combo.setEnabled(False)
-                self.baud_combo.setEnabled(False)
-                self.input_row.setEnabled(True)
-                self.log_path = self.engine.get_log_path()
-                self.open_log_btn.setEnabled(True)
-                self.cmd_input.setFocus()
-            else:
-                self.append_log(f"\n[ERROR] {msg}\n")
+    def _on_connection_lost(self, engine, message):
+        if engine is not self.engine:
+            return
+        self.disconnect()
+        self.append_log(f"\n[DISCONNECTED] {message}\n")
+
+    def toggle_connection(self):
+        if self.engine:
+            self.disconnect()
+            return
+        port = self.port_combo.currentText()
+        if port == "No Ports Found":
+            return
+        baud = int(self.baud_combo.currentText())
+        engine = SerialEngine(port, baud, lambda t: self.data_signal.received.emit(t),
+                              on_error=lambda message: self.data_signal.failed.emit(engine, message))
+        self.engine = engine
+        success, msg = engine.start()
+        if success:
+            self.status_led.setStyleSheet(f"color: {COLOR_ACCENT_GREEN}; font-size: 18px;")
+            self.conn_btn.setText("DISCONNECT")
+            self.conn_btn.setStyleSheet(f"color: {COLOR_ACCENT_RED};")
+            self.port_combo.setEnabled(False)
+            self.baud_combo.setEnabled(False)
+            self.input_row.setEnabled(True)
+            self.log_path = engine.get_log_path()
+            self.open_log_btn.setEnabled(True)
+            self.cmd_input.setFocus()
+        else:
+            self.engine = None
+            self.append_log(f"\n[ERROR] {msg}\n")
 
     def send_command(self):
         if not (self.engine and self.engine.running):
@@ -221,7 +242,8 @@ class SerialPane(QFrame):
             self.append_log("\n[ERROR] no log file yet\n")
             return
         try:
-            os.startfile(self.log_path)
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(self.log_path)):
+                self.append_log("\n[ERROR] could not open log file\n")
         except Exception as e:
             self.append_log(f"\n[ERROR] could not open log: {e}\n")
 
@@ -256,6 +278,8 @@ class MyToolsApp(QMainWindow):
 
         self.scan_dialog = None  # created lazily on first SCAN click
         self.panes = []
+        self.active_config_name = DEFAULT_CONFIG_NAME
+        self._pane_settings = {}
         self.pane_area_layout = None
 
         # Window icon is set by main() before show() for correct taskbar display
@@ -277,6 +301,7 @@ class MyToolsApp(QMainWindow):
 
         t_layout.addWidget(QLabel("PORT COUNT:"))
         self.port_count_combo = QComboBox()
+        self.port_count_combo.setToolTip("Keep connected ports; removing panes disconnects only those ports.")
         self.port_count_combo.addItems([str(n) for n in range(1, MAX_PANE_COUNT + 1)])
         self.port_count_combo.setCurrentText(str(DEFAULT_PANE_COUNT))
         self.port_count_combo.setFixedWidth(60)
@@ -293,6 +318,7 @@ class MyToolsApp(QMainWindow):
         t_layout.addWidget(self.config_combo)
 
         save_btn = QPushButton("Save")
+        save_btn.setToolTip("Save changes to the active configuration.")
         save_btn.clicked.connect(self.save_current_config)
         t_layout.addWidget(save_btn)
 
@@ -301,6 +327,7 @@ class MyToolsApp(QMainWindow):
         t_layout.addWidget(save_as_btn)
 
         load_btn = QPushButton("Load")
+        load_btn.setToolTip("Disconnect current ports and apply the selected configuration.")
         load_btn.clicked.connect(self.load_selected_config)
         t_layout.addWidget(load_btn)
 
@@ -329,20 +356,18 @@ class MyToolsApp(QMainWindow):
             self.refresh_config_list(select=DEFAULT_CONFIG_NAME)
 
     def build_panes(self, count):
-        """(Re)build the pane widgets for `count` ports.
-
-        Rows of at most 2 panes each: 1 -> single, 2 -> side by side,
-        3 -> 2-over-1, 4 -> 2x2. Any pane currently connected is disconnected
-        first so its serial thread doesn't leak when its widget is destroyed.
-        """
-        prior_settings = {p.pane_id: (p.port_combo.currentText(), p.baud_combo.currentText())
-                           for p in self.panes}
-
+        """Change the pane layout while keeping retained connections alive."""
+        self._pane_settings.update({p.pane_id: (p.port_combo.currentText(), p.baud_combo.currentText())
+                                    for p in self.panes})
+        prior_settings = self._pane_settings.copy()
+        reusable = {}
         for pane in self.panes:
-            if pane.engine and pane.engine.running:
-                pane.toggle_connection()  # graceful disconnect (closes port + log file)
             pane.setParent(None)
-            pane.deleteLater()
+            if pane.pane_id <= count:
+                reusable[pane.pane_id] = pane
+            else:
+                pane.disconnect()
+                pane.deleteLater()
         self.panes = []
 
         while self.pane_area_layout.count():
@@ -356,14 +381,14 @@ class MyToolsApp(QMainWindow):
         while remaining > 0:
             row_size = min(2, remaining)
             if row_size == 1:
-                pane = SerialPane(pane_id)
+                pane = reusable.get(pane_id) or SerialPane(pane_id)
                 self.panes.append(pane)
                 main_splitter.addWidget(pane)
                 pane_id += 1
             else:
                 row_splitter = QSplitter(Qt.Horizontal)
                 for _ in range(row_size):
-                    pane = SerialPane(pane_id)
+                    pane = reusable.get(pane_id) or SerialPane(pane_id)
                     self.panes.append(pane)
                     row_splitter.addWidget(pane)
                     pane_id += 1
@@ -379,7 +404,16 @@ class MyToolsApp(QMainWindow):
                 pane.baud_combo.setCurrentText(baud)
 
     def on_port_count_changed(self, text):
-        self.build_panes(int(text))
+        count = int(text)
+        closing = [p for p in self.panes if p.pane_id > count and p.engine]
+        if closing and QMessageBox.question(self, "Disconnect ports?",
+                f"Removing these panes will disconnect {len(closing)} serial port(s).",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            self.port_count_combo.blockSignals(True)
+            self.port_count_combo.setCurrentText(str(len(self.panes)))
+            self.port_count_combo.blockSignals(False)
+            return
+        self.build_panes(count)
 
     def open_scan_dialog(self):
         if self.scan_dialog is None:
@@ -428,40 +462,72 @@ class MyToolsApp(QMainWindow):
         }
 
     def _write_config(self, name):
-        os.makedirs(CONFIG_DIR, exist_ok=True)
         config = self._build_config_dict()
         try:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
             with open(config_path(name), "w") as f:
                 json.dump(config, f, indent=4)
-        except OSError as e:
-            print(f"Save error: {e}")
+        except OSError as error:
+            QMessageBox.critical(self, "Save failed", f"Could not save configuration:\n{error}")
+            return False
+        self.active_config_name = name
         self.refresh_config_list(select=name)
+        self.setWindowTitle(f"MyTools - Serial Monitor [{name}]")
+        self.statusBar().showMessage(f"Saved configuration: {name}", 5000)
+        return True
 
     def _apply_config_dict(self, config):
+        if not isinstance(config, dict):
+            return
         port_count = config.get("port_count", DEFAULT_PANE_COUNT)
-        if not isinstance(port_count, int) or not (1 <= port_count <= MAX_PANE_COUNT):
+        if type(port_count) is not int or not (1 <= port_count <= MAX_PANE_COUNT):
             port_count = DEFAULT_PANE_COUNT
         if port_count != len(self.panes):
             self.port_count_combo.setCurrentText(str(port_count))  # triggers build_panes via signal
 
         p_cfg = config.get("panes", {})
+        if not isinstance(p_cfg, dict):
+            return
         for pane in self.panes:
-            p_id = str(pane.pane_id)
-            if p_id in p_cfg:
-                pane.port_combo.setCurrentText(p_cfg[p_id].get("port", ""))
-                pane.baud_combo.setCurrentText(p_cfg[p_id].get("baud", "115200"))
+            pane_cfg = p_cfg.get(str(pane.pane_id))
+            if not isinstance(pane_cfg, dict):
+                continue
+            port = pane_cfg.get("port")
+            baud = pane_cfg.get("baud")
+            if isinstance(port, str):
+                pane.port_combo.setCurrentText(port)
+            if isinstance(baud, str) and baud in {"9600", "115200", "460800", "921600"}:
+                pane.baud_combo.setCurrentText(baud)
 
     def _load_config(self, name):
         try:
             with open(config_path(name), "r") as f:
                 config = json.load(f)
+            if not isinstance(config, dict):
+                raise ValueError("Configuration must be a JSON object.")
+            if not isinstance(config.get("panes", {}), dict):
+                raise ValueError("Configuration panes must be a JSON object.")
+            for pane_cfg in config.get("panes", {}).values():
+                if not isinstance(pane_cfg, dict):
+                    raise ValueError("Each pane must be a JSON object.")
+                if "port" in pane_cfg and not isinstance(pane_cfg["port"], str):
+                    raise ValueError("Serial port names must be text.")
+                if "baud" in pane_cfg and pane_cfg["baud"] not in ("9600", "115200", "460800", "921600"):
+                    raise ValueError("Unsupported baud rate in configuration.")
+            for pane in self.panes:
+                pane.disconnect()
+            self._pane_settings.clear()
             self._apply_config_dict(config)
-        except (json.JSONDecodeError, KeyError, OSError):
-            pass
+        except (ValueError, KeyError, OSError, UnicodeError) as error:
+            self.statusBar().showMessage(f"Could not load configuration: {error}", 8000)
+            return False
+        self.active_config_name = name
+        self.setWindowTitle(f"MyTools - Serial Monitor [{name}]")
+        self.statusBar().showMessage(f"Loaded configuration: {name}", 5000)
+        return True
 
     def save_current_config(self):
-        name = self.config_combo.currentText() or DEFAULT_CONFIG_NAME
-        self._write_config(name)
+        self._write_config(self.active_config_name)
 
     def save_config_as(self):
         name, ok = QInputDialog.getText(self, "Save Config As", "Config name:")
@@ -471,12 +537,27 @@ class MyToolsApp(QMainWindow):
         if not safe_name:
             QMessageBox.warning(self, "Invalid name", "Please use letters, numbers, - or _.")
             return
+        if safe_name != self.active_config_name and os.path.exists(config_path(safe_name)):
+            if QMessageBox.question(self, "Replace configuration?", f"Replace the saved configuration '{safe_name}'?",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
         self._write_config(safe_name)
 
     def load_selected_config(self):
         name = self.config_combo.currentText()
         if name:
+            if any(p.engine for p in self.panes):
+                if QMessageBox.question(self, "Load configuration?", "Loading will disconnect the current serial ports.",
+                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                    return
             self._load_config(name)
+
+    def closeEvent(self, event):
+        for pane in self.panes:
+            pane.disconnect()
+        if self.scan_dialog:
+            self.scan_dialog.scanner.stop()
+        super().closeEvent(event)
 
 def main():
     app = QApplication(sys.argv)

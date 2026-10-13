@@ -125,3 +125,8 @@ uv run python build_exe.py
 Results appear in `multi_terminal/dist/MultiTerminal.app`, then get copied to
 `multi_terminal/exe/MultiTerminal.app` (not committed — see `.gitignore`;
 rebuild locally).
+
+## Desktop operation workflows
+
+See [UI workflows](docs/ui-workflows.md) for pane preservation, saved configuration
+controls, connection recovery, and network scan operations.
