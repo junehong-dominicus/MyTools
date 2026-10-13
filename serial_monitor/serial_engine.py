@@ -16,6 +16,10 @@ class SerialEngine:
         self.thread = None
         self.log_file = None
         self.log_filename = None
+        # Guards log_file: stop() may close it while a slow reader thread that
+        # outlived join(timeout) is still writing.
+        self._log_lock = threading.Lock()
+        self._stopped = False
         
         # Ensure logs directory exists
         self.logs_dir = "logs"
@@ -46,8 +50,10 @@ class SerialEngine:
         try:
             self.ser = serial.Serial(self.port, self.baudrate, timeout=0.1)
             self.running = True
-            
-            self._create_log_file()
+            self._stopped = False
+
+            with self._log_lock:
+                self._create_log_file()
             
             self.thread = threading.Thread(target=self._run, daemon=True)
             self.thread.start()
@@ -74,14 +80,16 @@ class SerialEngine:
                 pass
             self.ser = None
             
-        if self.log_file:
-            try:
-                self.log_file.flush()
-                self.log_file.close()
-            except:
-                pass
-            self.log_file = None
-            
+        with self._log_lock:
+            if self.log_file:
+                try:
+                    self.log_file.flush()
+                    self.log_file.close()
+                except:
+                    pass
+                self.log_file = None
+            self._stopped = True
+
         return True, "Disconnected"
 
     def send(self, data):
@@ -115,18 +123,8 @@ class SerialEngine:
                         data = self.ser.read(self.ser.in_waiting)
                         text = decoder.decode(data)
                         
-                        # Write to log file
-                        if self.log_file:
-                            self.log_file.write(text)
-                            self.log_file.flush()
-                            self.current_log_size += len(data)
-                            
-                            # Check rotation
-                            if self.current_log_size >= self.max_log_size:
-                                self._create_log_file()
-                        
-                        # Callback to UI
-                        if self.on_data_received:
+                        # Callback to UI (skipped once stop() has completed)
+                        if self._write_log(text, len(data)) and self.on_data_received:
                             self.on_data_received(text)
                 except Exception as e:
                     print(f"Read error on {self.port}: {e}")
@@ -136,9 +134,20 @@ class SerialEngine:
             time.sleep(0.01)
 
         tail = decoder.decode(b"", final=True)
-        if tail:
+        # If stop() already gave up waiting and finished, the pane shows
+        # disconnected; drop the tail rather than append to a closed session.
+        if tail and self._write_log(tail, 0) and self.on_data_received:
+            self.on_data_received(tail)
+
+    def _write_log(self, text, nbytes):
+        """Append to the log; returns False once stop() has completed."""
+        with self._log_lock:
+            if self._stopped:
+                return False
             if self.log_file:
-                self.log_file.write(tail)
+                self.log_file.write(text)
                 self.log_file.flush()
-            if self.on_data_received:
-                self.on_data_received(tail)
+                self.current_log_size += nbytes
+                if self.current_log_size >= self.max_log_size:
+                    self._create_log_file()
+            return True

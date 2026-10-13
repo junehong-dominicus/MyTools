@@ -147,7 +147,8 @@ class EmbeddedSystemScanner:
 
         zeroconf = Zeroconf()
         try:
-            browser = ServiceBrowser(zeroconf, "_http._tcp.local.", MyListener(self))
+            # Held only to keep the browser alive for the dwell below.
+            _browser = ServiceBrowser(zeroconf, "_http._tcp.local.", MyListener(self))
             # Dwell in short slices so a stop request cuts the wait short.
             elapsed = 0.0
             while elapsed < 5.0 and not self._stop:
@@ -155,6 +156,15 @@ class EmbeddedSystemScanner:
                 elapsed += 0.2
         finally:
             zeroconf.close()
+
+    def _mdns_scan_safe(self):
+        # mDNS is best-effort: a host that cannot bind UDP 5353 (port held by
+        # another responder, no multicast interface) must not abort the scan
+        # and discard ARP results.
+        try:
+            self.mdns_scan()
+        except Exception as e:
+            print(f"mDNS scan error: {e}")
 
     def _get_with_retry(self, url, timeout, attempts=3, backoff=0.4):
         """GET with retry on connection errors.
@@ -254,6 +264,10 @@ class EmbeddedSystemScanner:
                 filtered.append((iface, subnet))
             subnets = filtered
 
+            # mDNS dwells ~5 s; run it alongside ARP rather than after it.
+            mdns_thread = threading.Thread(target=self._mdns_scan_safe, daemon=True)
+            mdns_thread.start()
+
             threads = []
             for interface, subnet in subnets:
                 t = threading.Thread(target=self.arp_scan, args=(interface, subnet,))
@@ -263,15 +277,15 @@ class EmbeddedSystemScanner:
 
             for t in threads:
                 t.join()
+            # Finish discovery before probing so mDNS-only devices are included.
+            # mdns_scan polls _stop, so this join is prompt on a stop request.
+            mdns_thread.join()
 
             if self._stop:
                 self.was_stopped = True
                 return self.devices
 
-            # Finish discovery before probing so mDNS-only devices are included.
-            # mdns_scan closes its browser before returning; probe a snapshot rather
-            # than an iterator over shared state.
-            self.mdns_scan()
+            # Probe a snapshot rather than an iterator over shared state.
             with self._devices_lock:
                 addresses = list(self.devices)
 

@@ -27,6 +27,9 @@ from common.ui_theme import apply_industrial_theme, COLOR_ACCENT_RED, COLOR_ACCE
 from serial_engine import SerialEngine
 from scan_dialog import ScanDialog
 
+BAUD_RATES = ("9600", "115200", "460800", "921600")
+DEFAULT_BAUD = "115200"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MyTools - Serial Monitor + Network Scanner
 # (migrated from serial_monitor_v2, with a network-scanner feature
@@ -98,14 +101,12 @@ class SerialPane(QFrame):
 
         self.port_combo = QComboBox()
         self.refresh_ports()
-        if self.port_combo.count() >= pane_id:
-            self.port_combo.setCurrentIndex(pane_id - 1)
         self.header_layout.addWidget(self.port_combo, 2)
 
         self.baud_combo = QComboBox()
-        self.baud_combo.addItems(["9600", "115200", "460800", "921600"])
-        self.baud_combo.setCurrentText("115200")
+        self.baud_combo.addItems(BAUD_RATES)
         self.header_layout.addWidget(self.baud_combo, 1)
+        self.reset_settings()
 
         self.conn_btn = QPushButton("CONNECT")
         self.conn_btn.setFixedWidth(100)
@@ -168,6 +169,12 @@ class SerialPane(QFrame):
         self.data_signal = DataSignal()
         self.data_signal.received.connect(self.append_log)
         self.data_signal.failed.connect(self._on_connection_lost)
+
+    def reset_settings(self):
+        """Select this pane's default port (Nth detected) and baud."""
+        if self.port_combo.count() >= self.pane_id:
+            self.port_combo.setCurrentIndex(self.pane_id - 1)
+        self.baud_combo.setCurrentText(DEFAULT_BAUD)
 
     def refresh_ports(self):
         current = self.port_combo.currentText()
@@ -264,6 +271,21 @@ LEGACY_CONFIG_FILENAME = "serial_config_v2.json"  # pre-multi-config location
 
 def config_path(name):
     return os.path.join(CONFIG_DIR, f"{name}.json")
+
+
+def validate_config(config):
+    """Raise ValueError unless config has the saved-config shape."""
+    if not isinstance(config, dict):
+        raise ValueError("Configuration must be a JSON object.")
+    if not isinstance(config.get("panes", {}), dict):
+        raise ValueError("Configuration panes must be a JSON object.")
+    for pane_cfg in config.get("panes", {}).values():
+        if not isinstance(pane_cfg, dict):
+            raise ValueError("Each pane must be a JSON object.")
+        if "port" in pane_cfg and not isinstance(pane_cfg["port"], str):
+            raise ValueError("Serial port names must be text.")
+        if "baud" in pane_cfg and pane_cfg["baud"] not in BAUD_RATES:
+            raise ValueError("Unsupported baud rate in configuration.")
 
 
 def sanitize_config_name(name):
@@ -477,8 +499,7 @@ class MyToolsApp(QMainWindow):
         return True
 
     def _apply_config_dict(self, config):
-        if not isinstance(config, dict):
-            return
+        """Apply a config that has already passed validate_config."""
         port_count = config.get("port_count", DEFAULT_PANE_COUNT)
         if type(port_count) is not int or not (1 <= port_count <= MAX_PANE_COUNT):
             port_count = DEFAULT_PANE_COUNT
@@ -486,36 +507,23 @@ class MyToolsApp(QMainWindow):
             self.port_count_combo.setCurrentText(str(port_count))  # triggers build_panes via signal
 
         p_cfg = config.get("panes", {})
-        if not isinstance(p_cfg, dict):
-            return
         for pane in self.panes:
-            pane_cfg = p_cfg.get(str(pane.pane_id))
-            if not isinstance(pane_cfg, dict):
-                continue
-            port = pane_cfg.get("port")
-            baud = pane_cfg.get("baud")
-            if isinstance(port, str):
-                pane.port_combo.setCurrentText(port)
-            if isinstance(baud, str) and baud in {"9600", "115200", "460800", "921600"}:
-                pane.baud_combo.setCurrentText(baud)
+            pane_cfg = p_cfg.get(str(pane.pane_id), {})
+            if "port" in pane_cfg:
+                pane.port_combo.setCurrentText(pane_cfg["port"])
+            if "baud" in pane_cfg:
+                pane.baud_combo.setCurrentText(pane_cfg["baud"])
 
     def _load_config(self, name):
         try:
             with open(config_path(name), "r") as f:
                 config = json.load(f)
-            if not isinstance(config, dict):
-                raise ValueError("Configuration must be a JSON object.")
-            if not isinstance(config.get("panes", {}), dict):
-                raise ValueError("Configuration panes must be a JSON object.")
-            for pane_cfg in config.get("panes", {}).values():
-                if not isinstance(pane_cfg, dict):
-                    raise ValueError("Each pane must be a JSON object.")
-                if "port" in pane_cfg and not isinstance(pane_cfg["port"], str):
-                    raise ValueError("Serial port names must be text.")
-                if "baud" in pane_cfg and pane_cfg["baud"] not in ("9600", "115200", "460800", "921600"):
-                    raise ValueError("Unsupported baud rate in configuration.")
+            validate_config(config)
+            # The loaded config is authoritative: panes it does not list fall
+            # back to defaults instead of keeping the previous session's port.
             for pane in self.panes:
                 pane.disconnect()
+                pane.reset_settings()
             self._pane_settings.clear()
             self._apply_config_dict(config)
         except (ValueError, KeyError, OSError, UnicodeError) as error:

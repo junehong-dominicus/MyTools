@@ -130,3 +130,25 @@ def test_invalid_serial_load_keeps_existing_connection(qapp, monkeypatch, tmp_pa
     engine.stop.assert_not_called()
     assert "Could not load" in window.statusBar().currentMessage()
     window.close()
+
+
+def test_serial_load_resets_panes_missing_from_config(qapp, monkeypatch, tmp_path):
+    window = make_window(monkeypatch, tmp_path)
+    window.port_count_combo.setCurrentText("2")
+    window.panes[1].baud_combo.setCurrentText("9600")
+    (tmp_path / "configs/partial.json").write_text('{"port_count": 2, "panes": {"1": {"baud": "460800"}}}')
+    assert window._load_config("partial") is True
+    assert window.panes[0].baud_combo.currentText() == "460800"
+    assert window.panes[1].baud_combo.currentText() == "115200"
+    window.close()
+
+
+def test_serial_load_with_count_change_ignores_stale_cache(qapp, monkeypatch, tmp_path):
+    window = make_window(monkeypatch, tmp_path)
+    window.port_count_combo.setCurrentText("2")
+    window.panes[1].baud_combo.setCurrentText("9600")
+    window.port_count_combo.setCurrentText("1")  # pane 2 settings cached
+    (tmp_path / "configs/grow.json").write_text('{"port_count": 2, "panes": {}}')
+    assert window._load_config("grow") is True
+    assert window.panes[1].baud_combo.currentText() == "115200"
+    window.close()
