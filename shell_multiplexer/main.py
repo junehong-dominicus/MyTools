@@ -248,7 +248,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Saved configuration: {name}", 5000)
         return True
 
-    def _load_config(self, name: str) -> None:
+    def _load_config(self, name: str) -> bool:
         try:
             mode, paths, font_size, histories = load_settings_file(config_file_path(self.config_dir, name), strict=True)
         except (ValueError, OSError) as error:
@@ -269,6 +269,7 @@ class MainWindow(QMainWindow):
         self.active_config_name = name
         self.setWindowTitle(f"MyTools - Shell Multiplexer [{name}]")
         self.statusBar().showMessage(f"Loaded configuration: {name}", 5000)
+        return True
 
     def save_current_config(self) -> None:
         self._write_config(self.active_config_name)

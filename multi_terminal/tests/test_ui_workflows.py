@@ -58,7 +58,7 @@ def test_invalid_config_load_keeps_current_session(qapp, monkeypatch, tmp_path, 
     (tmp_path / "configs/broken.json").write_text(invalid)
     warning = Mock()
     monkeypatch.setattr(QMessageBox, "warning", warning)
-    window._load_config("broken")
+    assert window._load_config("broken") is False
     assert window.panes[0] is original
     assert window.active_config_name == "default"
     warning.assert_called_once()
@@ -72,7 +72,7 @@ def test_load_replaces_history_instead_of_merging_previous_config(qapp, monkeypa
     window.build_panes("2")
     window.panes[1].terminal.load_history(["previous secret command"])
     save_settings_file(config_file_path(directory, "empty"), "2", {})
-    window._load_config("empty")
+    assert window._load_config("empty") is True
     assert window.panes[1].terminal.get_history() == []
     window.close()
 

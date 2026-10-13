@@ -1,6 +1,8 @@
 import json
 import os
 
+import pytest
+
 from settings import (
     DEFAULT_CONFIG_NAME, DEFAULT_FONT_SIZE, DEFAULT_LAYOUT_MODE, MAX_HISTORY_ENTRIES,
     config_file_path, list_config_names, load_settings_file, migrate_legacy_config,
@@ -274,3 +276,17 @@ def test_history_is_capped_on_load(tmp_path):
 
     assert len(histories[1]) == MAX_HISTORY_ENTRIES
     assert histories[1][-1] == f"cmd{MAX_HISTORY_ENTRIES + 49}"
+
+
+@pytest.mark.parametrize("config", [
+    {"layout_mode": "nope"},
+    {"font_size": 99},
+    {"panes": {"1": {"start_path": None}}},
+    {"panes": {"1": {"history": "ls"}}},
+])
+def test_strict_load_rejects_any_invalid_field(tmp_path, config):
+    path = tmp_path / "cfg.json"
+    path.write_text(json.dumps(config))
+
+    with pytest.raises(ValueError):
+        load_settings_file(str(path), strict=True)

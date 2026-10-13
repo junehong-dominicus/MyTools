@@ -72,3 +72,11 @@ def test_shrink_keeps_cursor_row_and_moves_old_rows_into_history():
     assert screen.get_line_text(1) == "five"
     assert screen.cursor.y == 1
     assert len(screen._screen.history.top) == 3
+
+
+def test_rows_moved_into_history_keep_blank_cell_default():
+    screen = TerminalScreen(columns=20, lines=6)
+    screen.feed("one\r\ntwo\r\nthree\r\nfour\r\nfive")
+    screen.resize(columns=20, lines=2)
+    # pyte's history paging reads every column, including unwritten ones.
+    assert screen._screen.history.top[0][15].data == " "

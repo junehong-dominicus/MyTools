@@ -1,6 +1,7 @@
 import re
 
 import pyte
+from pyte.screens import StaticDefaultDict
 
 # pyte has no notion of the Kitty/xterm "progressive keyboard enhancement"
 # protocol: CSI > flags u (push), CSI < [Pn] u (pop), CSI = flags [; mode] u
@@ -18,6 +19,12 @@ import pyte
 # don't implement (or need) that protocol regardless. Parameters can
 # contain ';' as well as digits (e.g. "=1;2u"), not just digits alone.
 _KITTY_KEYBOARD_PROTOCOL_RE = re.compile(r"\x1b\[[<>=?][\d;]*u")
+
+
+def _copy_row(row: StaticDefaultDict) -> StaticDefaultDict:
+    copy = StaticDefaultDict(row.default)
+    copy.update(row)
+    return copy
 
 
 class TerminalScreen:
@@ -40,7 +47,9 @@ class TerminalScreen:
         rows = {y - offset: row.copy() for y, row in screen.buffer.items()
                 if offset <= y < offset + lines}
         if offset:
-            screen.history.top.extend(screen.buffer[y].copy() for y in range(offset))
+            # dict.copy() would drop StaticDefaultDict's default cell, and pyte's
+            # history paging indexes blank columns of these rows.
+            screen.history.top.extend(_copy_row(screen.buffer[y]) for y in range(offset))
         screen.resize(lines=lines, columns=columns)
         screen.buffer.clear()
         for y, row in rows.items():

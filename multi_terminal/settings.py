@@ -58,16 +58,24 @@ def load_settings_file(path: str, *, strict: bool = False) -> tuple[str, dict[in
             raise FileNotFoundError(path)
         return DEFAULT_LAYOUT_MODE, {}, DEFAULT_FONT_SIZE, {}
 
+    # strict (an explicit user load) rejects any invalid field so the current
+    # session is kept; non-strict (startup) falls back to defaults per field.
+    def invalid(message):
+        if strict:
+            raise TypeError(message)
+
     try:
         with open(path, "r") as f:
             config = json.load(f)
 
         layout_mode = config.get("layout_mode", DEFAULT_LAYOUT_MODE)
         if layout_mode not in LAYOUT_MODES:
+            invalid("Unsupported layout mode.")
             layout_mode = DEFAULT_LAYOUT_MODE
 
         font_size = config.get("font_size", DEFAULT_FONT_SIZE)
         if font_size not in FONT_SIZES:
+            invalid("Unsupported font size.")
             font_size = DEFAULT_FONT_SIZE
 
         pane_paths = {}
@@ -77,8 +85,7 @@ def load_settings_file(path: str, *, strict: bool = False) -> tuple[str, dict[in
                 pid = int(pid_str)
                 start_path = pane_cfg.get("start_path", "")
                 if not isinstance(start_path, str):
-                    if strict:
-                        raise TypeError("Pane start paths must be text.")
+                    invalid("Pane start paths must be text.")
                     start_path = ""
                 pane_paths[pid] = start_path
             except (ValueError, AttributeError) as error:
@@ -88,6 +95,7 @@ def load_settings_file(path: str, *, strict: bool = False) -> tuple[str, dict[in
 
             history = pane_cfg.get("history", [])
             if not isinstance(history, list) or not all(isinstance(h, str) for h in history):
+                invalid("Pane history must be a list of text.")
                 history = []
             pane_histories[pid] = history[-MAX_HISTORY_ENTRIES:]
 
