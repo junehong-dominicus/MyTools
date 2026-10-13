@@ -233,3 +233,28 @@ configs/
 # Claude Code tool state (worktrees, session/scheduling state, etc.)
 .claude/
 serial_monitor/exe/logs/
+
+# Personal instruction overrides and environment secrets
+CLAUDE.local.md
+AGENTS.override.md
+.env.*
+!.env.example
+!.env.*.example
+
+# Codex local overrides, credentials, and runtime state; keep shared adapters tracked
+/.codex/config.local.toml
+/.codex/auth.json
+/.codex/auth.*.json
+/.codex/.credentials.json
+/.codex/.env*
+/.codex/AGENTS.override.md
+/.codex/config.toml.bak*
+/.codex/sessions/
+/.codex/archived_sessions/
+/.codex/log/
+/.codex/logs/
+/.codex/tmp/
+/.codex/cache/
+/.codex/history.jsonl
+/.codex/state_*.sqlite*
+/.codex/*.local.*

@@ -1,0 +1,7 @@
+# Shared project defaults; credentials and personal settings belong outside this file.
+# Project configuration loads only where the client and project trust allow it.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false
